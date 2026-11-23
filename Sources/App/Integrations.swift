@@ -152,7 +152,7 @@ enum SMAppServiceBridge {
     }
 }
 
-/// A shortcut that works from any app (⌃⌥T for quick entry), through Carbon's hot keys, which
+/// A shortcut that works from any app (⌘⌥X for quick entry), through Carbon's hot keys, which
 /// need no permission.
 final class HotKey {
     private var ref: EventHotKeyRef?

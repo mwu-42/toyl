@@ -59,7 +59,7 @@ struct Header: View {
             Quiet(label: "", symbol: "calendar", size: 15, tint: model.showCalendar ? Theme.ink : Theme.secondary) {
                 withAnimation(.snappy(duration: 0.25)) { model.showCalendar.toggle() }
             }
-            .help("calendar (⌥⌘C)")
+            .help("calendar")
             Quiet(label: "", symbol: "sidebar.right", size: 15) { model.showInspector.toggle() }
                 .help("details (⌥⌘I)")
         }

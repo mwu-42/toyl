@@ -40,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         makeWindow()
         AgentDocs.write()
         Integrations.installCommandIfNeeded()
-        hotKey = HotKey(keyCode: kVK_ANSI_T, modifiers: controlKey | optionKey, id: 1) { [weak self] in self?.showQuickEntry() }
+        hotKey = HotKey(keyCode: kVK_ANSI_X, modifiers: cmdKey | optionKey, id: 1) { [weak self] in self?.showQuickEntry() }
         handle(waiting)
         waiting = []
     }
@@ -175,7 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.activate()
     }
 
-    /// ⌃⌥T brings it up, and again puts it away.
+    /// ⌘⌥X brings it up, and again puts it away.
     @objc func showQuickEntry() {
         if quickPanel == nil { quickPanel = QuickEntryPanel(model: model) }
         guard let panel = quickPanel else { return }
@@ -222,6 +222,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc func calendarOn() { model.stepDay(1) }
     @objc func calendarToday() { model.showDay(Day.today()) }
     @objc func calendarDayMode() { model.showCalendar = true; model.calendarMode = .day }
+    @objc func calendarZoomIn() { model.zoomCalendar(1) }
+    @objc func calendarZoomOut() { model.zoomCalendar(-1) }
+    @objc func calendarZoomReset() { model.zoomCalendar(0) }
+    @objc func toggleHidden(_ sender: NSMenuItem) {
+        let places: [Place] = [.anytime, .inbox, .today, .ideas, .timers]
+        guard places.indices.contains(sender.tag) else { return }
+        model.setHidden(places[sender.tag], !model.isHidden(places[sender.tag]))
+    }
     @objc func calendarWeekMode() { model.showCalendar = true; model.calendarMode = .week }
     @objc func calendarMonthMode() { model.showCalendar = true; model.calendarMode = .month }
 
@@ -272,6 +280,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if action == #selector(toggleCalendar) { item.title = model.showCalendar ? "hide calendar" : "show calendar" }
         if [#selector(calendarBack), #selector(calendarOn), #selector(calendarToday)].contains(action) { return model.showCalendar && !typing }
         if action == #selector(calendarDayMode) { item.state = model.calendarMode == .day ? .on : .off }
+        if action == #selector(toggleHidden(_:)) {
+            let places: [Place] = [.anytime, .inbox, .today, .ideas, .timers]
+            if places.indices.contains(item.tag) { item.state = model.isHidden(places[item.tag]) ? .off : .on }
+        }
+        if [#selector(calendarZoomIn), #selector(calendarZoomOut), #selector(calendarZoomReset)].contains(action) { return model.showCalendar && !typing }
         if action == #selector(calendarWeekMode) { item.state = model.calendarMode == .week ? .on : .off }
         if action == #selector(calendarMonthMode) { item.state = model.calendarMode == .month ? .on : .off }
         return true
@@ -300,7 +313,7 @@ enum Menus {
         ]))
         main.addItem(submenu("file", [
             item("new task", #selector(AppDelegate.newTask), "n", target: app),
-            item("quick entry (⌃⌥t, from anywhere)", #selector(AppDelegate.showQuickEntry), target: app),
+            item("quick entry (⌘⌥x, from anywhere)", #selector(AppDelegate.showQuickEntry), target: app),
             item("new list", #selector(AppDelegate.newList), "n", [.command, .shift], target: app),
             item("new group", #selector(AppDelegate.newGroup), target: app),
             .separator(),
@@ -352,7 +365,12 @@ enum Menus {
             item("show done", #selector(AppDelegate.toggleDone), "d", [.command, .shift], target: app),
             item("hide sidebar", #selector(AppDelegate.toggleSidebar), "s", [.command, .control], target: app),
             item("hide details", #selector(AppDelegate.toggleDetails), "i", [.command, .option], target: app),
-            item("show calendar", #selector(AppDelegate.toggleCalendar), "c", [.command, .option], target: app),
+            item("show calendar", #selector(AppDelegate.toggleCalendar), target: app),
+            submenu("in the sidebar", ["all", "inbox", "today", "ideas", "timers"].enumerated().map { index, name in
+                let made = item(name, #selector(AppDelegate.toggleHidden(_:)), target: app)
+                made.tag = index
+                return made
+            }),
             submenu("calendar", [
                 item("earlier", #selector(AppDelegate.calendarBack), "[", [.command, .option], target: app),
                 item("later", #selector(AppDelegate.calendarOn), "]", [.command, .option], target: app),
@@ -361,6 +379,10 @@ enum Menus {
                 item("day", #selector(AppDelegate.calendarDayMode), target: app),
                 item("week", #selector(AppDelegate.calendarWeekMode), target: app),
                 item("month", #selector(AppDelegate.calendarMonthMode), target: app),
+                .separator(),
+                item("zoom in", #selector(AppDelegate.calendarZoomIn), "=", target: app),
+                item("zoom out", #selector(AppDelegate.calendarZoomOut), "-", target: app),
+                item("usual size", #selector(AppDelegate.calendarZoomReset), target: app),
             ]),
             .separator(),
             item("enter full screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),

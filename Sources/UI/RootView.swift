@@ -15,7 +15,7 @@ struct RootView: View {
                 PanelDivider(width: $model.sidebarWidth, range: 180...380, grows: .right, standard: 238)
             }
             ForEach(Array(shown.enumerated()), id: \.element) { index, panel in
-                if index > 0 { divider(between: shown[index - 1], and: panel) }
+                if index > 0 { divider(between: shown[index - 1], and: panel, tasksRight: (shown.firstIndex(of: .tasks) ?? 0) >= index) }
                 view(of: panel)
                     .overlay(alignment: .top) { PanelGrip(model: model, panel: panel) }
                     .transition(.opacity)
@@ -57,11 +57,11 @@ extension RootView {
         }
     }
 
-    /// The line between two panels resizes whichever of them has a width of its own (the to-dos
-    /// take what's left).
-    @ViewBuilder func divider(between left: Panel, and right: Panel) -> some View {
-        let sized = left == .tasks ? right : left
-        let grows: PanelDivider.Side = left == .tasks ? .left : .right
+    /// The line between two panels resizes the one on the far side of it from the to-dos (which
+    /// take what's left): so the calendar's edge always resizes the calendar, wherever it is.
+    @ViewBuilder func divider(between left: Panel, and right: Panel, tasksRight: Bool) -> some View {
+        let sized = tasksRight ? left : right
+        let grows: PanelDivider.Side = tasksRight ? .right : .left
         switch sized {
         case .details:
             PanelDivider(width: $model.inspectorWidth, range: 260...520, grows: grows, standard: 322)
@@ -100,7 +100,7 @@ struct PanelGrip: View {
                     Button("move \(panel.name) left") { model.nudgePanel(panel, -1) }
                     Button("move \(panel.name) right") { model.nudgePanel(panel, 1) }
                     Divider()
-                    Button("calendar, to-dos, details") { withAnimation(.snappy(duration: 0.25)) { model.panelOrder = Panel.standard } }
+                    Button("to-dos, details, calendar") { withAnimation(.snappy(duration: 0.25)) { model.panelOrder = Panel.standard } }
                 }
                 .help("drag to move \(panel.name)")
         }
@@ -163,10 +163,10 @@ struct SidebarView: View {
             Color.clear.frame(height: 46)
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {
-                    ForEach(Place.smart, id: \.self) { place in SidebarRow(model: model, place: place) }
+                    ForEach(Place.smart.filter { !model.isHidden($0) }, id: \.self) { place in SidebarRow(model: model, place: place) }
                     Spacer().frame(height: 10)
-                    SidebarRow(model: model, place: .ideas)
-                    SidebarRow(model: model, place: .timers)
+                    if !model.isHidden(.ideas) { SidebarRow(model: model, place: .ideas) }
+                    if !model.isHidden(.timers) { SidebarRow(model: model, place: .timers) }
                     if !snap.filters.isEmpty {
                         SidebarLabel(text: "filters")
                         ForEach(snap.filters) { filter in SidebarRow(model: model, place: .filter(filter.id)) }
@@ -364,6 +364,10 @@ struct SidebarRow: View {
             Button("delete filter") { model.deleteFilter(id) }
         case .inbox:
             Button("autosort the inbox…") { model.place = .inbox; model.showAutosort = true }
+            Divider()
+            Button("hide from the sidebar") { model.setHidden(place, true) }
+        case .anytime, .today, .ideas, .timers:
+            Button("hide from the sidebar") { model.setHidden(place, true) }
         default:
             EmptyView()
         }

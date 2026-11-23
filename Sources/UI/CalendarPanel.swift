@@ -287,22 +287,40 @@ private struct WeekDayTop: View {
     }
 }
 
-/// The week's all-day events, a column a day (two each, then how many more).
+/// The week's all-day events, a column a day: two each, then "n more", which opens the row to
+/// show them all ("less" closes it).
 private struct WeekAllDay: View {
     @ObservedObject var model: AppModel
     let days: [String]
     let width: CGFloat
+    @Local private var open = false
 
     var body: some View {
         let column = HoursView.column(width: width, days: days.count)
+        let most = days.map { day in model.calendar.everything(on: day).filter(\.allDay).count }.max() ?? 0
         HStack(alignment: .top, spacing: 0) {
-            Text("all day").font(Theme.font(11)).foregroundStyle(Theme.faint)
-                .frame(width: HoursView.gutter - 8, alignment: .trailing).padding(.trailing, 8)
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("all day").font(Theme.font(11)).foregroundStyle(Theme.faint)
+                if open, most > 2 {
+                    Button { withAnimation(.snappy(duration: 0.2)) { open = false } } label: {
+                        Text("less").font(Theme.font(10.5)).foregroundStyle(Theme.secondary).underline()
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(width: HoursView.gutter - 8, alignment: .trailing).padding(.trailing, 8)
             ForEach(days, id: \.self) { day in
                 let events = model.calendar.everything(on: day).filter(\.allDay)
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(events.prefix(2)) { event in AllDayChip(model: model, event: event, compact: true) }
-                    if events.count > 2 { Text("\(events.count - 2) more").font(Theme.font(10.5)).foregroundStyle(Theme.secondary) }
+                    ForEach(events.prefix(open ? events.count : 2)) { event in AllDayChip(model: model, event: event, compact: true) }
+                    if !open, events.count > 2 {
+                        Button { withAnimation(.snappy(duration: 0.2)) { open = true } } label: {
+                            Text("\(events.count - 2) more").font(Theme.font(10.5)).foregroundStyle(Theme.secondary).underline()
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("show them all")
+                    }
                     if events.isEmpty { Color.clear.frame(height: 14) }
                 }
                 .padding(.horizontal, 1.5)
@@ -326,9 +344,14 @@ private struct HoursView: View {
     let days: [String]
     let width: CGFloat
     @Local private var marker: DropSpot?
+    /// The zoom a pinch started from.
+    @Local private var pinchFrom: CGFloat?
 
-    static let hour: CGFloat = 44
+    /// An hour's height at no zoom.
+    static let baseHour: CGFloat = 44
     static let gutter: CGFloat = 44
+    /// An hour's height, zoomed.
+    private var hour: CGFloat { Self.baseHour * model.calendarZoom }
 
     static func column(width: CGFloat, days: Int) -> CGFloat { max(width - gutter - 8, 80) / CGFloat(max(days, 1)) }
     private var column: CGFloat { Self.column(width: width, days: days.count) }
@@ -340,23 +363,23 @@ private struct HoursView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 ZStack(alignment: .topLeading) {
-                    HourGrid()
+                    HourGrid(hour: hour)
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { location in
                             let index = min(max(Int((location.x - Self.gutter) / column), 0), days.count - 1)
-                            model.newEvent(day: days[index], time: Self.clock(Self.minutes(at: location.y, step: 30)))
+                            model.newEvent(day: days[index], time: Self.clock(Self.minutes(at: location.y, hour: hour, step: 30)))
                         }
                     if compact {
                         ForEach(1..<days.count, id: \.self) { index in
-                            Rectangle().fill(Theme.rule).frame(width: 1, height: 24 * Self.hour)
+                            Rectangle().fill(Theme.rule).frame(width: 1, height: 24 * hour)
                                 .offset(x: Self.gutter + column * CGFloat(index) - 1)
                                 .allowsHitTesting(false)
                         }
                     }
                     ForEach(Array(days.enumerated()), id: \.element) { index, day in
                         ForEach(Self.items(on: day, model: model)) { item in
-                            let y = CGFloat(item.from) * Self.hour / 60
-                            let height = max(CGFloat(item.to - item.from) * Self.hour / 60, 20) - 2
+                            let y = CGFloat(item.from) * hour / 60
+                            let height = max(CGFloat(item.to - item.from) * hour / 60, 20) - 2
                             let share = column / CGFloat(item.columns)
                             block(item, height: height, now: now)
                                 .frame(width: max(share - 2, 6), height: height)
@@ -365,18 +388,28 @@ private struct HoursView: View {
                         }
                     }
                     if let index = days.firstIndex(of: today) {
-                        NowLine(width: column).offset(x: Self.gutter + column * CGFloat(index) - 4, y: Self.y(now) - 4)
+                        NowLine(width: column).offset(x: Self.gutter + column * CGFloat(index) - 4, y: Self.y(now, hour: hour) - 4)
                     }
                     if let marker {
-                        DropMarker(time: Self.clock(Int(marker.y / Self.hour * 60)), width: column)
+                        DropMarker(time: Self.clock(Int(marker.y / hour * 60)), width: column)
                             .offset(x: Self.gutter + column * CGFloat(marker.column) - 38, y: marker.y - 8)
                     }
                 }
-                .frame(width: width, height: 24 * Self.hour, alignment: .topLeading)
-                .onDrop(of: [.plainText], delegate: HourDrop(model: model, days: days, column: column, marker: $marker))
+                .frame(width: width, height: 24 * hour, alignment: .topLeading)
+                .onDrop(of: [.plainText], delegate: HourDrop(model: model, days: days, column: column, hour: hour, marker: $marker))
                 .padding(.vertical, 10)
             }
             .scrollIndicators(.never)
+            // Pinch to zoom the hours (⌘= and ⌘- too).
+            .simultaneousGesture(
+                MagnifyGesture()
+                    .onChanged { value in
+                        let from = pinchFrom ?? model.calendarZoom
+                        if pinchFrom == nil { pinchFrom = from }
+                        model.calendarZoom = min(max(from * value.magnification, AppModel.zoomRange.lowerBound), AppModel.zoomRange.upperBound)
+                    }
+                    .onEnded { _ in pinchFrom = nil }
+            )
             .onAppear { scroll(proxy, today: today, now: now) }
             .onChange(of: days) { _, _ in scroll(proxy, today: today, now: now) }
         }
@@ -484,13 +517,13 @@ private struct HoursView: View {
         return result
     }
 
-    static func y(_ date: Date) -> CGFloat {
+    static func y(_ date: Date, hour: CGFloat) -> CGFloat {
         let parts = Day.calendar.dateComponents([.hour, .minute], from: date)
         return CGFloat(parts.hour! * 60 + parts.minute!) * hour / 60
     }
 
     /// The quarter (or half) hour at a height.
-    static func minutes(at y: CGFloat, step: Int = 15) -> Int {
+    static func minutes(at y: CGFloat, hour: CGFloat, step: Int = 15) -> Int {
         let raw = Int((y / hour * 60).rounded(.down))
         return min(max(raw / step * step, 0), 24 * 60 - step)
     }
@@ -506,19 +539,21 @@ private struct DropSpot: Equatable {
 
 /// The hours down the side, a hairline at each.
 private struct HourGrid: View {
+    let hour: CGFloat
+
     var body: some View {
         VStack(spacing: 0) {
-            ForEach(0..<24, id: \.self) { hour in
+            ForEach(0..<24, id: \.self) { h in
                 HStack(alignment: .top, spacing: 6) {
-                    Text(hour == 0 ? "" : Format.time(String(format: "%02d:00", hour)))
+                    Text(h == 0 ? "" : Format.time(String(format: "%02d:00", h)))
                         .font(Theme.font(11))
                         .foregroundStyle(Theme.secondary)
                         .frame(width: HoursView.gutter - 8, alignment: .trailing)
                         .offset(y: -7)
                     Rectangle().fill(Theme.rule).frame(height: 1)
                 }
-                .frame(height: HoursView.hour, alignment: .top)
-                .id("h\(hour)")
+                .frame(height: hour, alignment: .top)
+                .id("h\(h)")
             }
         }
     }
@@ -556,6 +591,7 @@ private struct HourDrop: DropDelegate {
     let model: AppModel
     let days: [String]
     let column: CGFloat
+    let hour: CGFloat
     @Binding var marker: DropSpot?
 
     private func index(_ point: CGPoint) -> Int { min(max(Int((point.x - HoursView.gutter) / column), 0), days.count - 1) }
@@ -563,14 +599,14 @@ private struct HourDrop: DropDelegate {
     func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [.plainText]) }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        marker = DropSpot(column: index(info.location), y: CGFloat(HoursView.minutes(at: info.location.y)) * HoursView.hour / 60)
+        marker = DropSpot(column: index(info.location), y: CGFloat(HoursView.minutes(at: info.location.y, hour: hour)) * hour / 60)
         return DropProposal(operation: .move)
     }
 
     func dropExited(info: DropInfo) { marker = nil }
 
     func performDrop(info: DropInfo) -> Bool {
-        let time = HoursView.clock(HoursView.minutes(at: info.location.y))
+        let time = HoursView.clock(HoursView.minutes(at: info.location.y, hour: hour))
         let day = days[index(info.location)]
         marker = nil
         let providers = info.itemProviders(for: [.plainText])

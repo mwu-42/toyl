@@ -227,7 +227,7 @@ struct SettingsView: View {
                 .labelsHidden()
                 .frame(width: 110)
             }
-            row("keyboard", "⌃⌥T add from anywhere", hint: "⌘1–5 places · ⌘K check off · ⇧⌘T timer") { EmptyView() }
+            row("keyboard", "⌘⌥X add from anywhere", hint: "⌘1–5 places · ⌘K check off · ⇧⌘T timer") { EmptyView() }
         }
     }
 
@@ -447,7 +447,7 @@ struct PhoneSection: View {
 
 import ServiceManagement
 
-/// The panel ⌃⌥T brings up over any app: type a task, Return, and it's in (and you're back
+/// The panel ⌘⌥X brings up over any app: type a task, Return, and it's in (and you're back
 /// where you were).
 final class QuickEntryPanel: NSPanel {
     init(model: AppModel) {

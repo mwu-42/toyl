@@ -213,7 +213,7 @@ struct TaskMenu: View {
         Button("no date") { model.setDue(nil, for: ids) }
         Divider()
         if let one {
-            Button(model.isInProgress(one) ? "back to to-do" : "in progress (swipe left)") { model.toggleInProgress(one.id) }
+            Button(model.isInProgress(one) ? "back to to-do" : "in progress (swipe right)") { model.toggleInProgress(one.id) }
         }
         Button(tasks.allSatisfy(\.pinned) ? "unpin" : "pin to the top") { model.togglePin(ids) }
         Button(tasks.allSatisfy(\.someday) ? "back from ideas" : "to ideas (put off)") { model.toggleSomeday(ids) }
@@ -321,7 +321,7 @@ struct Sublist: View {
     }
 }
 
-/// What a swipe uncovers: delete (red, on the left, swiping right) or in progress (gold, on the
+/// What a swipe uncovers: in progress (gold, on the left, swiping right) or delete (red, on the
 /// right, swiping left), bolder once it's far enough to do it.
 struct SwipeBehind: View {
     let offset: CGFloat
@@ -332,22 +332,22 @@ struct SwipeBehind: View {
         ZStack {
             if offset > 0 {
                 HStack(spacing: 6) {
-                    Image(systemName: "trash")
-                    Text("delete").font(Theme.font(14))
+                    Image(systemName: inProgress ? "arrow.uturn.backward" : "circle.lefthalf.filled")
+                    Text(inProgress ? "back to to-do" : "in progress").font(Theme.font(14))
                 }
                 .foregroundStyle(.white)
                 .padding(.leading, 18)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 7).fill(Theme.late.opacity(reached ? 0.95 : 0.6)))
+                .background(RoundedRectangle(cornerRadius: 7).fill(Theme.accent.opacity(reached ? 1 : 0.6)))
             } else if offset < 0 {
                 HStack(spacing: 6) {
-                    Text(inProgress ? "back to to-do" : "in progress").font(Theme.font(14))
-                    Image(systemName: inProgress ? "arrow.uturn.backward" : "circle.lefthalf.filled")
+                    Text("delete").font(Theme.font(14))
+                    Image(systemName: "trash")
                 }
                 .foregroundStyle(.white)
                 .padding(.trailing, 18)
                 .frame(maxWidth: .infinity, alignment: .trailing)
-                .background(RoundedRectangle(cornerRadius: 7).fill(Theme.accent.opacity(reached ? 1 : 0.6)))
+                .background(RoundedRectangle(cornerRadius: 7).fill(Theme.late.opacity(reached ? 0.95 : 0.6)))
             }
         }
         .animation(.easeOut(duration: 0.12), value: reached)

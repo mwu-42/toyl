@@ -6,7 +6,7 @@ import SwiftUI
 enum Panel: String, CaseIterable {
     case calendar, tasks, details
 
-    static let standard: [Panel] = [.calendar, .tasks, .details]
+    static let standard: [Panel] = [.tasks, .details, .calendar]
 
     var name: String {
         switch self {
@@ -61,7 +61,11 @@ final class AppModel: ObservableObject {
     /// Day, week or month.
     @Published var calendarMode: CalendarMode { didSet { defaults.set(calendarMode.rawValue, forKey: "calendarMode"); wantShown() } }
     /// The window's panels, left to right (each shown or not): drag one by its grip to move it.
-    @Published var panelOrder: [Panel] { didSet { defaults.set(panelOrder.map(\.rawValue), forKey: "panels") } }
+    @Published var panelOrder: [Panel] { didSet { defaults.set(panelOrder.map(\.rawValue), forKey: "panels.2") } }
+    /// How tall the calendar's hours are (pinch, or ⌘= and ⌘-): 1 is 44 points an hour.
+    @Published var calendarZoom: CGFloat { didSet { defaults.set(Double(calendarZoom), forKey: "calendarZoom") } }
+    /// Places taken out of the sidebar (by their keys).
+    @Published var hiddenPlaces: Set<String> { didSet { defaults.set(Array(hiddenPlaces), forKey: "hiddenPlaces") } }
     @Published var showDone = false
     /// A sidebar item being renamed: "list:id", "group:id" or "filter:id".
     @Published var renaming: String?
@@ -120,7 +124,9 @@ final class AppModel: ObservableObject {
         if widths.isEmpty, let old = defaults.object(forKey: "width.calendar") as? Double { widths["day"] = old }
         calendarWidths = widths
         calendarMode = CalendarMode(rawValue: defaults.string(forKey: "calendarMode") ?? "") ?? .day
-        let saved = (defaults.stringArray(forKey: "panels") ?? []).compactMap(Panel.init(rawValue:))
+        let saved = (defaults.stringArray(forKey: "panels.2") ?? []).compactMap(Panel.init(rawValue:))
+        calendarZoom = CGFloat(defaults.object(forKey: "calendarZoom") as? Double ?? 1)
+        hiddenPlaces = Set(defaults.stringArray(forKey: "hiddenPlaces") ?? [])
         panelOrder = Set(saved) == Set(Panel.allCases) && saved.count == Panel.allCases.count ? saved : Panel.standard
         lowercaseAll = defaults.bool(forKey: "lowercaseAll")
         suggestWhileTyping = defaults.object(forKey: "suggest") as? Bool ?? true
@@ -617,6 +623,31 @@ final class AppModel: ObservableObject {
         withAnimation(.snappy(duration: 0.25)) { panelOrder = order }
     }
 
+    /// Zooms the calendar's hours in (+1) or out (-1), or back to the usual (0).
+    func zoomCalendar(_ way: Int) {
+        let steps: [CGFloat] = [0.5, 0.65, 0.8, 1, 1.25, 1.5, 1.8, 2.2, 2.6]
+        withAnimation(.snappy(duration: 0.2)) {
+            if way == 0 { calendarZoom = 1; return }
+            let next = way > 0 ? steps.first { $0 > calendarZoom + 0.01 } : steps.last { $0 < calendarZoom - 0.01 }
+            calendarZoom = next ?? calendarZoom
+        }
+    }
+
+    static let zoomRange: ClosedRange<CGFloat> = 0.5...2.6
+
+    // MARK: - places in the sidebar
+
+    func isHidden(_ place: Place) -> Bool { hiddenPlaces.contains(place.key) }
+
+    /// Takes a place out of the sidebar (or puts it back). Hiding the one that's showing goes to
+    /// the first left.
+    func setHidden(_ place: Place, _ hidden: Bool) {
+        withAnimation(.snappy(duration: 0.2)) {
+            if hidden { hiddenPlaces.insert(place.key) } else { hiddenPlaces.remove(place.key) }
+        }
+        if hidden, self.place == place { self.place = (Place.smart + [.ideas, .timers]).first { !isHidden($0) } ?? .anytime }
+    }
+
     /// Whether a panel's showing now.
     func isShown(_ panel: Panel) -> Bool {
         switch panel {
@@ -669,8 +700,8 @@ final class AppModel: ObservableObject {
 
     // MARK: - swiping (as Mail does, two fingers on the trackpad)
 
-    /// Watches the trackpad for sideways swipes over a task: left moves it to in progress, right
-    /// deletes it.
+    /// Watches the trackpad for sideways swipes over a task: right moves it to in progress, left
+    /// deletes it (as Mail's left swipe does).
     func watchSwipes() {
         guard swipeWatch == nil else { return }
         swipeWatch = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
@@ -712,9 +743,9 @@ final class AppModel: ObservableObject {
             swallowMomentum = true
             let offset = swipe?.offset ?? track.dx
             withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { swipe = nil }
-            if offset <= -Self.swipeReach {
+            if offset >= Self.swipeReach {
                 toggleInProgress(track.id)
-            } else if offset >= Self.swipeReach {
+            } else if offset <= -Self.swipeReach {
                 withAnimation(.easeInOut(duration: 0.22)) { store.delete([track.id]) }
                 selection.remove(track.id)
                 banner = "deleted · ⌘z puts it back"

@@ -19,18 +19,21 @@ background with its window hidden, and never jumps in front of what you're doing
 ## What's in it
 
 - 🗂 **places**: all · inbox · today · ideas · timers, then your lists (in groups), tags, saved filters. ⌘1–5. it opens on all.
-- 📅 **calendar panel** (⌥⌘C, or the calendar button): google calendar beside your list, as a **day, week or month**.
+  - hide one you don't use: right-click it › hide from the sidebar · view › in the sidebar brings it back
+- 📅 **calendar panel** (the calendar button): google calendar beside your list, as a **day, week or month**.
   - day: the week on top · all-day events · the hours, with your timed tasks dashed among the events
-  - week: seven days of hours side by side · month: each day's events and tasks; click a day to open it
+  - week: seven days of hours side by side; "n more" over a day opens the all-day row · month: each day's events and tasks; click a day to open it
+  - **zoom** the hours: pinch on the trackpad, or ⌘= and ⌘-
   - drop a task on an hour to do it then, or on a day to move it · double-click an hour for a new event
   - **drag an event onto a task** to tie them: the task takes the event's day, time and list, and follows it if it moves. the event itself is never changed.
   - click an event for its details · ⌥⌘[ and ⌥⌘] for earlier and later · today is always one click
-- ↔️ **panels**: calendar, to-dos, details, in that order at first.
+- ↔️ **panels**: to-dos, details, calendar, in that order at first.
+  - drag the calendar's edge to make it wider or narrower, wherever it sits
   - drag a panel's grip (≡, at its top) onto another to swap them · right-click the grip to move it left or right
   - drag the line between panels to resize them · double-click it for the usual width
 - 👆 **swipe a task** (two fingers on the trackpad, as in Mail; or a finger on the phone)
-  - left: into its list's **in progress** (again to take it back out)
-  - right: delete (⌘z puts it back)
+  - right: into its list's **in progress** (again to take it back out)
+  - left: delete (⌘z puts it back)
 - ✉️ **important email**: gmail and outlook, pulled into the inbox and flagged ✉ email. below.
 - ☑️ **sublists**: a task's sublist shows right under it. select the task to add to it · ✨ "break it down" makes one with apple intelligence.
 - 💡 **ideas**: loose ideas (`?` first) and anything put off (`/idea`, or drag it onto ideas). it keeps its list.
@@ -47,7 +50,7 @@ background with its window hidden, and never jumps in front of what you're doing
 - ✨ **small animations**: a check pops then fades, new things slide in, counts roll.
 - 🕰 **late, quietly**: a soft red date, nothing more.
 - 📅 **google calendar**: below.
-- ⌃⌥T **quick entry** from anywhere · esc, click away or ⌃⌥T again to close.
+- ⌘⌥X **quick entry** from anywhere · esc, click away or ⌘⌥X again to close.
 
 ## Google Calendar
 
@@ -113,7 +116,7 @@ toyl on your phone is made for adding tasks and running timers, served by toyl o
 - ➕ a big "new task" field first, read the way quick add reads it (`fri 5pm`, `#cs`, `/timer 30m`), with your lists to file into
 - ⏱ big buttons for 10m · 30m · 1h · 6h · 24h and a stopwatch, on anything or on a task; what's running, to pause, +5 or stop
 - 🗂 your lists and their tasks (tap a list to fold it), to check off or time
-  - swipe left: in progress · swipe right: delete (with undo)
+  - swipe right: in progress · swipe left: delete (with undo)
 - ✉️ added while the Mac can't be reached: kept on the phone, sent when it can
 
 **Setting it up, once:**

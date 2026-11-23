@@ -3,7 +3,7 @@ import AppKit
 /// toyl's iPhone page: what `PhoneLink` serves. Saved to the home screen, it opens full screen like
 /// an app. Adding comes first (a big field, your lists to file into, what it read), then timers
 /// (big buttons for 10m, 30m, 1h, 6h, 24h and a stopwatch; what's running, to pause, add to or
-/// stop), then your lists, to check off, time, or swipe (left: in progress; right: delete). No
+/// stop), then your lists, to check off, time, or swipe (right: in progress; left: delete). No
 /// calendar. Paper, ink and Times New Roman, in lower case.
 enum PhonePage {
     static let html = #"""
@@ -67,11 +67,11 @@ enum PhonePage {
     li.task.going { opacity: 0; }
     li.task .front { display: flex; align-items: flex-start; gap: 12px; padding: 11px 2px; background: var(--paper); position: relative; transition: transform 0.22s; }
     li.task .behind { position: absolute; inset: 0; display: none; align-items: center; padding: 0 18px; color: white; font-size: 17px; }
-    li.task.right .behind { display: flex; justify-content: flex-start; background: rgba(168, 90, 80, 0.6); }
-    li.task.left .behind { display: flex; justify-content: flex-end; background: rgba(151, 141, 121, 0.6); }
-    li.task.right.reached .behind { background: var(--late); }
-    li.task.left.reached .behind { background: var(--accent); }
-    li.task.right .behind .prog, li.task.left .behind .del { display: none; }
+    li.task.right .behind { display: flex; justify-content: flex-start; background: rgba(151, 141, 121, 0.6); }
+    li.task.left .behind { display: flex; justify-content: flex-end; background: rgba(168, 90, 80, 0.6); }
+    li.task.right.reached .behind { background: var(--accent); }
+    li.task.left.reached .behind { background: var(--late); }
+    li.task.right .behind .del, li.task.left .behind .prog { display: none; }
     .circle { flex: none; width: 24px; height: 24px; margin-top: 1px; border-radius: 50%; border: 1.4px solid var(--faint); background: transparent; padding: 0; position: relative; transition: transform 0.2s; }
     .circle.done { background: var(--accent); border-color: var(--accent); transform: scale(1.08); }
     .circle.done::after { content: ""; position: absolute; left: 7.5px; top: 3.5px; width: 6px; height: 11px; border: solid white; border-width: 0 2.2px 2.2px 0; transform: rotate(45deg); }
@@ -122,7 +122,7 @@ enum PhonePage {
       <div id="presets" class="presets"></div>
       <label class="on-what">on <input id="label" placeholder="anything" autocapitalize="none"></label>
       <div id="groups"></div>
-      <p class="swipe-hint">swipe left: in progress · swipe right: delete</p>
+      <p class="swipe-hint">swipe right: in progress · swipe left: delete</p>
       <p id="hint" hidden>share › add to home screen <button id="hintClose" aria-label="close">×</button></p>
     </main>
     <main id="pair" hidden>
@@ -412,7 +412,7 @@ enum PhonePage {
     function taskRow(task) {
       const row = el("li", "task");
       const behind = el("div", "behind");
-      behind.append(el("span", "del", "delete"), el("span", "prog", task.progress ? "back to to-do" : "in progress"));
+      behind.append(el("span", "prog", task.progress ? "back to to-do" : "in progress"), el("span", "del", "delete"));
       const front = el("div", "front");
       const circle = el("button", "circle");
       circle.setAttribute("aria-label", "check off");
@@ -447,7 +447,7 @@ enum PhonePage {
       return row;
     }
 
-    // Swiping, as Apple's lists do: left for in progress, right to delete.
+    // Swiping, as Apple's lists do: right for in progress, left to delete.
     function swipeable(row, front, task) {
       let x0 = 0, y0 = 0, dx = 0, sideways = null;
       row.addEventListener("touchstart", (event) => {
@@ -472,11 +472,11 @@ enum PhonePage {
       }, { passive: false });
       const finish = () => {
         front.style.transition = "transform 0.22s";
-        if (sideways && dx <= -80) {
+        if (sideways && dx >= 80) {
           front.style.transform = "";
           progress(task);
-        } else if (sideways && dx >= 80) {
-          front.style.transform = "translateX(110%)";
+        } else if (sideways && dx <= -80) {
+          front.style.transform = "translateX(-110%)";
           remove(task, row, front);
         } else {
           front.style.transform = "";

@@ -556,8 +556,7 @@ struct DayGlance: View {
                 Hairline()
                 VStack(alignment: .leading, spacing: 5) {
                     Tip(key: "⌘N", words: "new task")
-                    Tip(key: "⌃⌥T", words: "add from anywhere")
-                    Tip(key: "⌥⌘C", words: "calendar")
+                    Tip(key: "⌘⌥X", words: "add from anywhere")
                     Tip(key: "?", words: "an idea")
                     Tip(key: "#cs", words: "list or tag")
                     Tip(key: "/timer", words: "start a timer")

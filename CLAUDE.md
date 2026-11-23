@@ -90,12 +90,15 @@ It's the v3 format Oyl's to-do store reads, grown:
 - **Places**: all (`anytime` inside; first, and where the window opens), inbox, today, ideas (loose ideas and
   anything put off: `someday` in the file), timers. No upcoming or logbook in the window (the command line and
   agents can still ask for them). **No line of description under a place's title.**
-- **Panels** (`Panel`, `AppModel.panelOrder`): calendar, to-dos, details by default, dragged into any order by
-  the grip at each one's top. The sidebar stays at the left edge.
+- **Panels** (`Panel`, `AppModel.panelOrder`): to-dos, details, calendar by default, dragged into any order by
+  the grip at each one's top. The sidebar stays at the left edge. The line beside a panel resizes the one on the
+  far side of it from the to-dos, so the calendar's edge always resizes the calendar.
+- **Places** can be hidden from the sidebar (`hiddenPlaces`). Quick entry from anywhere is ⌘⌥X. The calendar has
+  no shortcut of its own; ⌘= and ⌘- (and a pinch) zoom its hours (`calendarZoom`).
 - **Calendar**: day, week and month (`CalendarMode`); the today button always shows; events stay clearly
   colored (past ones barely faded). Dragging an event onto a task ties them one way (`event.follows`): the
   task takes the event's day, time, length and list, and toyl never writes to that event.
-- **Swipes** (Mail's way): left moves a task into its list's "in progress" section, right deletes it.
+- **Swipes** (Mail's way): right moves a task into its list's "in progress" section, left deletes it.
 - **Links** show as cards in the details only, never on rows.
 - **Late is quiet**: a soft red date and nothing else. No badges, red headings or red circles.
 - **Sublists, not steps**: a task's sub-items (`subtasks` in the file) are its sublist, always shown under it in
