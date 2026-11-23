@@ -40,6 +40,7 @@ open behind what you're doing (in front only if you were using toyl), never taki
   - a list shows its loose tasks first, then each project under a big heading, with a + to add straight into it
   - make one: "new project" at the bottom of a list, the list's menu, or a task's project in its description
   - drop a task on a project's heading to put it in; double-click the heading to rename it; right-click to delete it (its tasks stay)
+  - a task with a sublist can **turn into a project**: right-click › turn into a project (or "make it a project" by its sublist). each item becomes a task in it
 - ☑️ **sublists**: a task's sublist shows right under it. select the task to add to it · ✨ "break it down" makes one with apple intelligence.
 - 💡 **ideas**: loose ideas (`?` first) and anything put off (`/idea`, or drag it onto ideas). it keeps its list.
 - ⌨️ **quick add** reads what you type: `essay draft fri 5pm #cs ~2h !`

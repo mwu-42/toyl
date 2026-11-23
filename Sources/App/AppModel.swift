@@ -551,6 +551,21 @@ final class AppModel: ObservableObject {
         return id
     }
 
+    /// Turns a task (with a sublist) into a project: its items become the project's tasks.
+    func makeProject(from taskId: String) {
+        guard let task = snap.task(taskId) else { return }
+        let project = UID.make()
+        let ids = task.subtasks.map { _ in UID.make() }
+        let list = task.listId
+        withAnimation(.snappy(duration: 0.3)) {
+            store.change("into a project") { $0.makeProject(from: taskId, id: project, taskIds: ids) }
+            place = list == ListModel.inbox ? .inbox : .list(list)
+            setGroup(.project, for: place)
+            selection = []
+        }
+        banner = "“\(task.title)” is a project now · ⌘z puts it back"
+    }
+
     func renameProject(_ id: String, in list: String, to name: String) {
         let name = name.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }

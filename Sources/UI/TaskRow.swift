@@ -222,6 +222,9 @@ struct TaskMenu: View {
         }
         Button(tasks.allSatisfy(\.pinned) ? "unpin" : "pin to the top") { model.togglePin(ids) }
         Button(tasks.allSatisfy(\.someday) ? "back from ideas" : "to ideas (put off)") { model.toggleSomeday(ids) }
+        if let one, !one.subtasks.isEmpty, !one.isIdea {
+            Button("turn into a project") { model.makeProject(from: one.id) }
+        }
         if let one, let list = model.snap.list(one.listId) {
             Menu("project") {
                 Button(one.project == nil ? "✓ none" : "none") { model.setProject(nil, list: list.id, for: ids) }

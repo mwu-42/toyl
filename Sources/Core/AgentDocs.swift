@@ -49,7 +49,7 @@ enum AgentDocs {
         Lists can sit in **groups** (school, clubs), and hold **projects** (`projects: [{id, name}]` on the list; \
         a task's `project` is one of its list's): the big pieces of work in a list. Make one with `create_project` \
         (or `toyl project add <list> <name>`); put a task in one with `project` on add_task or update_task (or \
-        `--project`). Moving a task to another list takes it out of its project. The **inbox** (list id `inbox`) holds what hasn't been filed. \
+        `--project`). `task_to_project` (or `toyl project from <task>`) turns a task's sublist into a project. Moving a task to another list takes it out of its project. The **inbox** (list id `inbox`) holds what hasn't been filed. \
         **Ideas** (list id `dump`) holds loose ideas; its sections are folders.
         - A task has a **deadline** (`due`, `YYYY-MM-DD`, plus `time` `HH:MM`, 24-hour), which can't slip and is \
         late once past. toyl doesn't use aims any more: "by fri" means due fri (don't set `target`). There are no \

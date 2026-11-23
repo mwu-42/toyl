@@ -425,7 +425,7 @@ enum CLI {
     /// Projects: `toyl projects [list]`, `toyl project add <list> <name>`, `toyl project rm <list> <name>`.
     private static func project(_ args: Args) throws {
         var words = args.positional
-        let what = words.first.map { ["add", "new", "rm", "delete"].contains($0) ? $0 : "" } ?? ""
+        let what = words.first.map { ["add", "new", "rm", "delete", "from"].contains($0) ? $0 : "" } ?? ""
         if !what.isEmpty { words.removeFirst() }
         let snap = try Actions.snapshot()
         switch what {
@@ -433,6 +433,11 @@ enum CLI {
             guard words.count >= 2 else { throw Ops.Failure("toyl project add <list> <name>") }
             let made = try Actions.addProject(list: words[0], name: words.dropFirst().joined(separator: " "))
             out(["list": made.list.displayName, "id": made.id], args, text: "project in \(made.list.displayName): " + words.dropFirst().joined(separator: " "))
+        case "from":
+            guard !words.isEmpty else { throw Ops.Failure("toyl project from <task>") }
+            let made = try Actions.makeProject(from: words.joined(separator: " "))
+            out(["list": made.list.displayName, "id": made.id, "tasks": made.tasks], args,
+                text: "a project in \(made.list.displayName) now, with \(made.tasks) task\(made.tasks == 1 ? "" : "s")")
         case "rm", "delete":
             guard words.count >= 2, let list = Ops.list(words[0], in: snap) else { throw Ops.Failure("toyl project rm <list> <name>") }
             let name = words.dropFirst().joined(separator: " ").lowercased()
@@ -680,7 +685,7 @@ enum CLI {
           toyl all|today|inbox|ideas [filter]   (and upcoming, logbook)
           toyl mail [pull [--dry-run]|gmail on|off|outlook client <id>|outlook connect|ask on|off]
           toyl merge <list> [into]        fold a list into another (the inbox, if none)
-          toyl projects [list] · toyl project add|rm <list> <name> · add/edit --project <name|none>
+          toyl projects [list] · toyl project add|rm <list> <name> · toyl project from <task> · add/edit --project <name|none>
           toyl canvas [pull [--dry-run]|token <t>|feed <address>|site <canvas.school.edu>|on|off|forget]
           toyl ls <filter>             e.g. toyl ls "#school due:week", toyl ls essay is:all
           toyl show <id|title>

@@ -252,6 +252,10 @@ struct TaskDetail: View {
             HStack {
                 Label("sublist", systemImage: "list.bullet.indent").font(Theme.font(13.5)).foregroundStyle(Theme.faint)
                 Spacer()
+                if !task.subtasks.isEmpty, !task.isIdea {
+                    Quiet(label: "make it a project", symbol: "folder.badge.plus", size: 12.5) { model.makeProject(from: task.id) }
+                        .help("each item becomes a task in a project named “\(task.title)”")
+                }
                 if OnDevice.isAvailable {
                     if model.thinking == task.id {
                         Text("thinking…").font(Theme.meta).foregroundStyle(Theme.faint)

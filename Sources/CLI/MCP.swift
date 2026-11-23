@@ -223,6 +223,9 @@ enum Tools {
             tool("create_project", "new project",
                  "Makes a project inside one of the owner's lists: a big piece of work (an essay, an event) whose tasks show under it. Tasks join it with add_task or update_task's project.",
                  object(["list": string("the list (id or name)"), "name": string("the project's name")], required: ["list", "name"]), idempotent: true),
+            tool("task_to_project", "turn a task into a project",
+                 "Turns a task that has a sublist into a project in its list: the project is named as the task was, each sublist item becomes a task in it (checked off if it was), and the task goes.",
+                 object(["task_id": string("the task's id or title")], required: ["task_id"]), idempotent: false),
             tool("pull_canvas", "pull assignments from canvas",
                  "Reads the owner's Canvas (if they've connected it) and brings what's due into toyl: each new assignment, quiz or graded discussion becomes a task due when Canvas says, in the list named like its course (else the inbox), with its Canvas link in the notes and a canvas field. Due dates Canvas moved move the task; ones submitted on Canvas are checked off.",
                  object(["dry_run": bool("say what would change, without changing it")]), idempotent: false),
@@ -407,6 +410,10 @@ enum Tools {
             guard let list = a["list"] as? String, let name = a["name"] as? String else { throw Ops.Failure("give a list and a name") }
             let made = try Actions.addProject(list: list, name: name)
             return ["list": made.list.displayName, "id": made.id, "name": name]
+        case "task_to_project":
+            guard let ref = a["task_id"] as? String else { throw Ops.Failure("which task?") }
+            let made = try Actions.makeProject(from: ref)
+            return ["list": made.list.displayName, "project_id": made.id, "tasks": made.tasks]
         case "pull_canvas":
             let dry = a["dry_run"] as? Bool ?? false
             let outcome = try Actions.pullCanvas(apply: !dry)

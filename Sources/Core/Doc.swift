@@ -527,6 +527,35 @@ struct Doc {
         }
     }
 
+    /// Turns a task into a project in its list: named as it was, its notes the project's, each item
+    /// of its sublist a task in it (in order, checked off if it was, with the task's tags). The task
+    /// goes. `taskIds` are the new tasks' ids, one an item.
+    mutating func makeProject(from taskId: String, id projectId: String, taskIds: [String], now: Date = Date()) {
+        guard let task = task(taskId) else { return }
+        addProject(to: task.listId, name: task.title, id: projectId)
+        if !task.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            editList(task.listId) { list in
+                list["projects"] = (list["projects"] as? [Any] ?? []).map { project in
+                    guard var project = project as? [String: Any], project["id"] as? String == projectId else { return project }
+                    project["notes"] = task.notes
+                    return project
+                }
+            }
+        }
+        for (item, id) in zip(task.subtasks, taskIds) {
+            var draft = TaskDraft(title: item.title)
+            draft.listId = task.listId
+            draft.sectionId = task.sectionId
+            draft.project = projectId
+            draft.tags = task.tags
+            draft.source = "toyl"
+            draft.position = .bottom
+            _ = addTask(draft, id: id, now: now)
+            if item.done { setDone(id, true, now: now) }
+        }
+        deleteTask(taskId)
+    }
+
     /// Takes a project away; its tasks stay in the list, in no project.
     mutating func deleteProject(_ id: String, in listId: String, now: Date = Date()) {
         editList(listId) { list in

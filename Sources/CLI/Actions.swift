@@ -386,6 +386,18 @@ extension Actions {
     /// Plans an event the owner's way (CALENDAR.md) and, if nothing's missing and `apply`, adds
     /// it (taking any copy off m) and ties its task to it. What's still needed comes back as
     /// questions instead.
+    /// Turns a task with a sublist into a project. The list and the project's id.
+    static func makeProject(from ref: String) throws -> (list: ListModel, id: String, tasks: Int) {
+        let snap = try snapshot()
+        let task = try Ops.task(ref, in: snap)
+        guard !task.subtasks.isEmpty else { throw Ops.Failure("“\(task.title)” has no sublist to make a project of") }
+        guard let list = snap.list(task.listId) else { throw Ops.Failure("its list is gone") }
+        let id = UID.make()
+        let ids = task.subtasks.map { _ in UID.make() }
+        try save { $0.makeProject(from: task.id, id: id, taskIds: ids) }
+        return (list, id, ids.count)
+    }
+
     /// A new project in a list. Its id.
     static func addProject(list ref: String, name: String) throws -> (list: ListModel, id: String) {
         let snap = try snapshot()
