@@ -3,7 +3,7 @@
 # installs it in ~/Applications and links the `toyl` command into ~/.local/bin.
 # Usage: ./build.sh               build and install
 #        ./build.sh --run         build, install, then (re)open it
-#        ./build.sh --no-install  just build build/toyl.app
+#        ./build.sh --no-install  just build build/toyl.app (kept; otherwise it's removed once installed)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -77,12 +77,20 @@ if pgrep -f 'toyl\.app/Contents/MacOS/toyl$' >/dev/null; then
     running=1
     osascript -e 'quit app id "local.toyl"' >/dev/null 2>&1 || true
     for _ in $(seq 1 50); do pgrep -f 'toyl\.app/Contents/MacOS/toyl$' >/dev/null || break; sleep 0.1; done
+    # Any copy still open (there should only ever be one, but quit them all).
+    pkill -TERM -f 'toyl\.app/Contents/MacOS/toyl$' 2>/dev/null || true
 fi
 mkdir -p "$HOME/Applications"
 rm -rf "$INSTALLED"
 cp -R "$APP" "$INSTALLED"
 mkdir -p "$HOME/.local/bin"
 ln -sfn "$INSTALLED/Contents/MacOS/toyl" "$HOME/.local/bin/toyl"
+# Only one toyl on the Mac: the build copy goes once it's installed, so Spotlight, Launchpad and
+# toyl:// links never find (or open) a second one.
+LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+"$LSREGISTER" -u "$APP" >/dev/null 2>&1 || true
+rm -rf "$APP"
+"$LSREGISTER" -f "$INSTALLED" >/dev/null 2>&1 || true
 echo "Installed $INSTALLED (and the toyl command in ~/.local/bin)"
 
 # Opened again quietly if it was open (in the background, its window hidden, so it never jumps

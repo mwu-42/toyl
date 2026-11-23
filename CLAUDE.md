@@ -7,10 +7,10 @@ line, and an MCP server (`toyl mcp`).
 ## Build and check (never on screen)
 
 ```bash
-./build.sh               # build, install to ~/Applications/toyl.app, link ~/.local/bin/toyl (reopens quietly if it was open)
-./build.sh --no-install  # just build/toyl.app
+./build.sh               # build, install to ~/Applications/toyl.app, link ~/.local/bin/toyl (reopens quietly if it was open); build/toyl.app is removed
+./build.sh --no-install  # just build/toyl.app (don't leave it around: it shows up as a second toyl)
 TOYL_HOME=/tmp/t toyl add "essay fri 5pm #cs"            # a scratch list
-TOYL_HOME=/tmp/t build/toyl.app/Contents/MacOS/toyl __snapshot today /tmp/today.png   # the window, drawn offscreen
+TOYL_HOME=/tmp/t toyl __snapshot today /tmp/today.png   # the window, drawn offscreen
 ```
 
 - **Never open, relaunch or activate the app while working on it.** That includes `open`,
