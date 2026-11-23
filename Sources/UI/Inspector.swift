@@ -42,19 +42,15 @@ struct TaskDetail: View {
     @Local private var title = ""
     @Local private var notes = ""
     @Local private var due = ""
-    @Local private var aim = ""
-    @Local private var length = ""
     @Local private var newTag = ""
     @Local private var newItem = ""
     @Local private var timerText = ""
+    /// Notes with links read as words and cards; this is on while they're being changed.
+    @Local private var editingNotes = false
     @FocusState private var notesFocused: Bool
 
-    /// One tap each: its own length first, if it has one.
-    private var timerLengths: [Int] {
-        var lengths = [5, 10, 15, 25, 45, 60]
-        if let own = task.duration, !lengths.contains(own) { lengths.insert(own, at: 0) }
-        return lengths
-    }
+    /// One tap each.
+    private var timerLengths: [Int] { TimerEngine.presets }
 
     private func startTyped() {
         guard let minutes = Ops.minutes(timerText).flatMap({ $0 }), minutes > 0 else { return }
@@ -95,7 +91,7 @@ struct TaskDetail: View {
         .scrollIndicators(.never)
         .onAppear(perform: fill)
         .onChange(of: task) { _, _ in refill() }
-        .onChange(of: notesFocused) { _, focused in if !focused { commitNotes() } }
+        .onChange(of: notesFocused) { _, focused in if !focused { commitNotes(); editingNotes = false } }
         .onDisappear { commitNotes() }
     }
 
@@ -103,8 +99,6 @@ struct TaskDetail: View {
         title = task.title
         notes = task.notes
         due = dueText
-        aim = task.target.map { Format.aim($0) } ?? ""
-        length = task.duration.map(Format.minutes) ?? ""
     }
 
     /// What's changed elsewhere (the command line, an agent, Oyl), shown unless it's being typed in.
@@ -112,8 +106,6 @@ struct TaskDetail: View {
         title = task.title
         if !notesFocused { notes = task.notes }
         due = dueText
-        aim = task.target.map { Format.aim($0) } ?? ""
-        length = task.duration.map(Format.minutes) ?? ""
     }
 
     private var dueText: String {
@@ -135,10 +127,6 @@ struct TaskDetail: View {
                     .font(Theme.font(12.5)).foregroundStyle(Theme.faint)
                     .padding(.leading, 88)
             }
-            DetailRow(label: "aim", icon: "scope") {
-                PlainField(text: $aim, placeholder: "when", font: Theme.nsFont(15), onSubmit: commitAim, onEnd: commitAim)
-                    .frame(height: 19)
-            }
             DetailRow(label: "repeats", icon: "arrow.2.squarepath") {
                 Menu {
                     Button("never") { setRepeat(nil) }
@@ -149,10 +137,6 @@ struct TaskDetail: View {
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
-            }
-            DetailRow(label: "takes", icon: "hourglass") {
-                PlainField(text: $length, placeholder: "how long", font: Theme.nsFont(15), onSubmit: commitLength, onEnd: commitLength)
-                    .frame(height: 19)
             }
         }
     }
@@ -286,17 +270,35 @@ struct TaskDetail: View {
         model.store.update(task.id, "add to sublist", p)
     }
 
+    /// The notes: with links in them (and not being changed), the words and a card for each
+    /// link; otherwise a plain box to type in.
     private var notesEditor: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Label("notes", systemImage: "text.alignleft").font(Theme.font(13.5)).foregroundStyle(Theme.faint)
-            TextEditor(text: $notes)
-                .font(Theme.font(15))
-                .scrollContentBackground(.hidden)
-                .focused($notesFocused)
-                .frame(minHeight: 90)
-                .padding(6)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.field))
+            HStack {
+                Label("notes", systemImage: "text.alignleft").font(Theme.font(13.5)).foregroundStyle(Theme.faint)
+                Spacer()
+                if !editingNotes, !NoteLinks.links(in: notes).isEmpty {
+                    Quiet(label: "edit", symbol: "pencil", size: 12.5) { startEditingNotes() }
+                }
+            }
+            if editingNotes || notesFocused || NoteLinks.links(in: notes).isEmpty {
+                TextEditor(text: $notes)
+                    .font(Theme.font(15))
+                    .scrollContentBackground(.hidden)
+                    .focused($notesFocused)
+                    .frame(minHeight: 90)
+                    .padding(6)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Theme.field))
+            } else {
+                RenderedNotes(text: notes) { startEditingNotes() }
+                    .transition(.opacity)
+            }
         }
+    }
+
+    private func startEditingNotes() {
+        editingNotes = true
+        DispatchQueue.main.async { notesFocused = true }
     }
 
     // MARK: time
@@ -422,24 +424,6 @@ struct TaskDetail: View {
         model.store.update(task.id, "reschedule", p)
     }
 
-    private func commitAim() {
-        let text = aim.trimmingCharacters(in: .whitespaces)
-        guard text != (task.target.map { Format.aim($0) } ?? "") else { return }
-        guard let day = Ops.aim(text, weekStart: model.snap.weekStart) else { aim = task.target.map { Format.aim($0) } ?? ""; return }
-        var p = TaskPatch()
-        p.target = day
-        model.store.update(task.id, "aim", p)
-    }
-
-    private func commitLength() {
-        let text = length.trimmingCharacters(in: .whitespaces)
-        guard text != (task.duration.map(Format.minutes) ?? "") else { return }
-        guard let minutes = Ops.minutes(text) else { length = task.duration.map(Format.minutes) ?? ""; return }
-        var p = TaskPatch()
-        p.duration = minutes
-        model.store.update(task.id, "length", p)
-    }
-
     private func setRepeat(_ rule: TodRepeat?) {
         var p = TaskPatch()
         p.repeats = .some(rule)
@@ -522,7 +506,7 @@ struct ManyDetail: View {
                 Quiet(label: "copy for an agent", symbol: "doc.on.doc") { model.copyForAgent() }
                 Quiet(label: "delete them", symbol: "trash", tint: Theme.late) { model.deleteSelected() }
             }
-            Label("right-click: move, tag, aim", systemImage: "cursorarrow.click.2").font(Theme.meta).foregroundStyle(Theme.faint)
+            Label("right-click: move, tag", systemImage: "cursorarrow.click.2").font(Theme.meta).foregroundStyle(Theme.faint)
             Spacer()
         }
         .padding(.horizontal, 22)
@@ -572,8 +556,6 @@ struct DayGlance: View {
                     Tip(key: "⌥⌘C", words: "calendar")
                     Tip(key: "?", words: "an idea")
                     Tip(key: "#cs", words: "list or tag")
-                    Tip(key: "by fri", words: "an aim")
-                    Tip(key: "~30m", words: "how long")
                     Tip(key: "/timer", words: "start a timer")
                     Tip(key: "!", words: "pin")
                 }

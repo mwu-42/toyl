@@ -217,7 +217,7 @@ struct SettingsView: View {
             switchRow("textformat.abc", "my typing in lowercase too", $model.lowercaseAll)
             row("timer", "focus timer") {
                 Picker("", selection: Binding(get: { Int(model.timers.defaultMinutes) }, set: { UserDefaults.standard.set(Double($0), forKey: TimerEngine.defaultMinutesKey); refresh += 1 })) {
-                    ForEach([15, 20, 25, 30, 45, 50, 60, 90], id: \.self) { Text(Format.minutes($0)).tag($0) }
+                    ForEach(TimerEngine.presets, id: \.self) { Text(Format.minutes($0)).tag($0) }
                 }
                 .labelsHidden()
                 .frame(width: 90)

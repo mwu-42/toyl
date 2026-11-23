@@ -48,14 +48,14 @@ enum AgentDocs {
         Lists can sit in **groups** (school, clubs). The **inbox** (list id `inbox`) holds what hasn't been filed. \
         **Ideas** (list id `dump`) holds loose ideas; its sections are folders.
         - A task has a **deadline** (`due`, `YYYY-MM-DD`, plus `time` `HH:MM`, 24-hour), which can't slip and is \
-        late once past, and/or an **aim** (`target`): a day to have it done by, roughly, which can slip. Say "due" \
-        for deadlines and "by" for aims. There are no priorities: what's pressing is what's due. **Pinned** keeps \
+        late once past. toyl doesn't use aims any more: "by fri" means due fri (don't set `target`). There are no \
+        priorities: what's pressing is what's due. **Pinned** keeps \
         a task at the top of today. **Putting it off** (`someday` in the file) moves it into ideas.
         - **Tags** are plain words (`#reading`). **Repeat** is one of daily, weekdays, weekly, biweekly, monthly, \
-        yearly: checking a repeating task off adds the next one. **Duration** is minutes it should take. \
+        yearly: checking a repeating task off adds the next one. **Duration** (minutes) only sets its timer and calendar length; the window doesn't show it. \
         **Spent** is seconds timed on it. A task's **sublist** (`subtasks` in the file) shows under it in the list: \
         call it a sublist, not steps.
-        - **Today** shows what's due or aimed for today or before, plus pinned tasks. **All** (`anytime` in the file and commands) is everything open, and where the window opens. \
+        - **Today** shows what's due today or before, plus pinned tasks. **All** (`anytime` in the file and commands) is everything open, and where the window opens. \
         **Ideas** holds loose ideas and anything put off. (Agents can also ask for upcoming, dated later, and logbook, done.)
         - Text is shown in lower case, but keep the case the person typed. Don't capitalize their words.
 
@@ -82,7 +82,7 @@ enum AgentDocs {
         name starts with it, like "💻 cs 106b", otherwise a tag), taking two hours, pinned.
         - `?` first: an idea. `~list` or `~"two words"`: a list, made if needed. `#word`: list or tag.
         - Days: `today`, `tomorrow`, `fri`, `next fri`, `in 3 days`, `nov 30`, `2026-12-01`, `5pm`, `17:00`, `noon`, `3-4pm`.
-        - Aims: `by fri`, `next week`, `early dec`, `in a month or so`, `fri-ish`. `due` makes anything a deadline.
+        - `by fri`, `next week`, `early dec`, `in a month or so`, `fri-ish`: due then.
         - `every day/weekday/week/other week/month/year`, `every fri`, `daily`, `weekly`.
         - `~30m`, `for 2h`, `1h30m`: duration. `!` or `/pin`: pinned. `/idea`: put off into ideas. ` // ` then notes.
         - `/timer`, `/timer 25m`, `/stopwatch`: start a timer on it as it's added.

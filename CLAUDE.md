@@ -97,7 +97,11 @@ It's the v3 format Oyl's to-do store reads, grown:
 - **Email**: only what needs doing comes in (`MailRules`: packages first, then action words; lists and newsletters
   only from .edu), flagged `source: "email"` with an `email` link. Rules before the on-device model.
 - **No priorities.** What's pressing is what's due. Pins are the only way to lift something.
-- **Deadline and aim stay apart**: "due" can't slip; "by" can, and says so.
+- **No aims, no "takes"**: "by fri" is when it's due. A length from quick add (`~30m`) only sets the task's
+  timer and calendar length; it isn't shown or edited. (`target` and `duration` stay in the file for Oyl and agents.)
+- **Timer lengths**: 10m, 30m, 1h, 6h, 24h (`TimerEngine.presets`); 30m by default.
+- **Links in notes are cards** (`Links.swift`: LinkPresentation for the title and icon).
+- **Every list's heading shows in all**, empty or not, with a + to add straight into it.
 - **Google Calendar, never Apple's.** Everything written follows CALENDAR.md:
   - lowercase, no em dashes, no "#" in titles
   - minimal descriptions, no reminders, no links

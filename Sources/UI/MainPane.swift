@@ -286,6 +286,10 @@ struct TaskListView: View {
                         if group.title != nil || group.day != nil && model.place == .upcoming {
                             GroupHeading(model: model, group: group)
                         }
+                        if model.addingTo == group.id {
+                            AddUnder(model: model, group: group)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
                         if model.place == .upcoming, let day = group.day, model.calendar.showEvents {
                             EventsStrip(events: model.calendar.events(on: day), now: now, compact: true)
                         }
@@ -360,6 +364,12 @@ struct GroupHeading: View {
             Spacer()
             if group.isLate, !group.tasks.isEmpty { LateMenu(model: model, ids: group.tasks.map(\.id)) }
             Text("\(group.tasks.count)").font(Theme.font(12.5)).foregroundStyle(Theme.faint).opacity(group.tasks.isEmpty ? 0 : 1)
+            if group.listId != nil {
+                Quiet(label: "", symbol: "plus", size: 14) {
+                    withAnimation(.snappy(duration: 0.2)) { model.addingTo = model.addingTo == group.id ? nil : group.id }
+                }
+                .help("new task here")
+            }
         }
         .padding(.horizontal, 12)
         .padding(.top, 20)
@@ -377,6 +387,37 @@ struct GroupHeading: View {
             }
             if let list = group.listId, list != ListModel.inbox || true { Button("add a section") { model.addSection(to: list) } }
         }
+    }
+}
+
+/// A line under a heading, from its +: what's typed goes straight into that list (or section),
+/// read as quick add reads it. Return adds and stays for another; Escape, or clicking away with
+/// nothing typed, closes it.
+struct AddUnder: View {
+    @ObservedObject var model: AppModel
+    let group: TaskGroup
+    @Local private var text = ""
+
+    var body: some View {
+        HStack(spacing: 11) {
+            Image(systemName: "plus").font(.system(size: 11)).foregroundStyle(Theme.faint).frame(width: 17)
+            PlainField(text: $text, placeholder: "new task", focus: 1, onSubmit: add, onEscape: close,
+                       onEnd: { if text.trimmingCharacters(in: .whitespaces).isEmpty { close() } })
+                .frame(height: 20)
+        }
+        .padding(.vertical, 7)
+        .padding(.horizontal, 10)
+    }
+
+    private func add() {
+        let typed = text
+        text = ""
+        model.quickAdd(typed, section: group)
+    }
+
+    private func close() {
+        withAnimation(.snappy(duration: 0.2)) { if model.addingTo == group.id { model.addingTo = nil } }
+        model.focusList += 1
     }
 }
 

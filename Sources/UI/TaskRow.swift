@@ -39,6 +39,13 @@ struct TaskRow: View {
                         .animation(.easeOut(duration: 0.2), value: done)
                 }
                 if let meta = metaLine { meta.font(Theme.meta).lineLimit(1) }
+                let links = NoteLinks.links(in: task.notes)
+                if !links.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(links.prefix(3), id: \.self) { url in LinkCard(url: url, compact: true).frame(maxWidth: 240, alignment: .leading) }
+                    }
+                    .padding(.top, 3)
+                }
                 if !task.subtasks.isEmpty || (selected && model.selection.count == 1 && !done) {
                     Sublist(model: model, task: task, adding: selected && model.selection.count == 1 && !done)
                         .padding(.top, 3)
@@ -112,12 +119,8 @@ struct TaskRow: View {
             let color = late ? Theme.late.opacity(0.75) : (task.due == today ? Theme.ink : Theme.secondary)
             parts.append(Text(when).foregroundColor(color))
         }
-        if let target = task.target {
-            parts.append(Text(Format.aim(target, now: now)).foregroundColor(Theme.secondary))
-        }
         if task.isFromEmail { parts.append(Text(Image(systemName: "envelope")) + Text(" email")) }
         if let repeats = task.repeats { parts.append(Text(Image(systemName: "arrow.2.squarepath")) + Text(" " + repeats.phrase)) }
-        if let duration = task.duration { parts.append(Text("~" + Format.minutes(duration))) }
         if task.spent >= 60 { parts.append(Text(Image(systemName: "timer")) + Text(" " + Format.spent(task.spent))) }
         if showsList, let list = model.snap.list(task.listId) {
             let color = Theme.color(hex: list.color)
@@ -128,7 +131,7 @@ struct TaskRow: View {
             }
         }
         if !task.tags.isEmpty { parts.append(Text(task.tags.map { "#" + model.display($0) }.joined(separator: " "))) }
-        if !task.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { parts.append(Text(Image(systemName: "text.alignleft"))) }
+        if !NoteLinks.withoutLinks(task.notes).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { parts.append(Text(Image(systemName: "text.alignleft"))) }
         if task.event != nil { parts.append(Text(Image(systemName: "calendar"))) }
         if task.pinned { parts.append(Text(Image(systemName: "pin.fill")).foregroundColor(Theme.accent)) }
         if task.someday, model.place != .ideas { parts.append(Text(Image(systemName: "lightbulb"))) }
@@ -152,11 +155,7 @@ struct TimerMenu: View {
     let task: TaskModel
 
     var body: some View {
-        if let length = task.duration {
-            Button("\(Format.minutes(length)) (how long it takes)") { model.timer(task, minutes: Double(length)) }
-            Divider()
-        }
-        ForEach([5, 10, 15, 25, 45, 60, 90], id: \.self) { minutes in
+        ForEach(TimerEngine.presets, id: \.self) { minutes in
             Button(Format.minutes(minutes)) { model.timer(task, minutes: Double(minutes)) }
         }
         Divider()
@@ -208,15 +207,6 @@ struct TaskMenu: View {
         Button("this weekend") { model.setDue(TodQuick.read("sat", now: Date(), weekStart: model.snap.weekStart).due, for: ids) }
         Button("next week") { model.setDue(TodQuick.read("next week", now: Date(), weekStart: model.snap.weekStart).due, for: ids) }
         Button("no date") { model.setDue(nil, for: ids) }
-        Menu("aim for") {
-            ForEach(["the end of this week", "next week", "the end of the month", "next month"], id: \.self) { words in
-                Button(words) {
-                    var text = "by " + words
-                    model.setAim(IdeaQuick.takeAim(&text, now: Date(), weekStart: model.snap.weekStart), for: ids)
-                }
-            }
-            Button("no aim") { model.setAim(nil, for: ids) }
-        }
         Divider()
         Button(tasks.allSatisfy(\.pinned) ? "unpin" : "pin to the top") { model.togglePin(ids) }
         Button(tasks.allSatisfy(\.someday) ? "back from ideas" : "to ideas (put off)") { model.toggleSomeday(ids) }

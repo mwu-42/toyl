@@ -29,10 +29,12 @@ background with its window hidden, and never jumps in front of what you're doing
 - 💡 **ideas**: loose ideas (`?` first) and anything put off (`/idea`, or drag it onto ideas). it keeps its list.
 - ⌨️ **quick add** reads what you type: `essay draft fri 5pm #cs ~2h !`
   - `#cs` list or tag · `~list` a list · `?` an idea
-  - `fri 5pm`, `tomorrow`, `nov 30` a deadline · `by fri`, `next week` an aim (can slip)
-  - `every week` repeats · `~30m` how long · `!` pin · ` // ` notes
-  - `/timer`, `/timer 25m`, `/stopwatch` start a timer on it
-- ⏱ **timers on any task**: hover a task and click ⏱ (right-click it for lengths), pick a length in its details, or type one. time adds up on the task.
+  - `fri 5pm`, `tomorrow`, `nov 30`, `by fri`, `next week` when it's due
+  - `every week` repeats · `~30m` its timer's length · `!` pin · ` // ` notes
+  - `/timer`, `/timer 30m`, `/stopwatch` start a timer on it
+- ⏱ **timers on any task**: hover a task and click ⏱ (right-click it for lengths), or pick one in its details: 10m · 30m · 1h · 6h · 24h, or type one. time adds up on the task.
+- 🔗 **links in notes are cards**: the page's icon and title; click to open. small ones show on the task's row too.
+- ➕ **every list has its heading in all**, empty or not, with a + on the right to add straight into it.
 - 🪄 **autosort**: files new tasks where your others go (on the mac); ⌥⌘A does the inbox.
 - 🔎 **filters**: `#tag`, `in:cs`, `due:week`, `is:late`… save one as a list.
 - ✨ **small animations**: a check pops then fades, new things slide in, counts roll.

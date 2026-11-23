@@ -13,9 +13,11 @@ final class TimerEngine: ObservableObject {
     @Published private(set) var ringing: TimerModel?
 
     static let defaultMinutesKey = "timers.minutes"
+    /// The lengths offered for a timer, one tap each: 10m, 30m, 1h, 6h, 24h.
+    static let presets = [10, 30, 60, 360, 1440]
     var defaultMinutes: Double {
         let saved = UserDefaults.standard.double(forKey: Self.defaultMinutesKey)
-        return saved > 0 ? saved : 25
+        return saved > 0 ? saved : 30
     }
 
     private let store: Store

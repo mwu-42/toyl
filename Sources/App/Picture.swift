@@ -49,7 +49,7 @@ enum Picture {
                                   backing: .buffered, defer: false)
             window.contentView = view
             window.backgroundColor = Theme.nsPaper
-            RunLoop.main.run(until: Date().addingTimeInterval(mode.hasPrefix("calendar") ? 3 : 1.2))
+            RunLoop.main.run(until: Date().addingTimeInterval(mode.hasPrefix("calendar") || mode.hasPrefix("select:") ? 4 : 1.2))
             view.layoutSubtreeIfNeeded()
             view.display()
             guard let picture = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return 1 }

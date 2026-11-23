@@ -97,6 +97,11 @@ struct Quick: Equatable {
         }
         // An aim on the same day as the deadline says nothing more.
         if q.target != nil, q.target == q.due { q.target = nil }
+        // toyl has no aims any more: "by fri", "next week" are when it's due.
+        if let target = q.target {
+            if q.due == nil { q.due = target }
+            q.target = nil
+        }
         q.title = tidy(text).replacingOccurrences(of: hash, with: "#")
         q.titleIsEmpty = q.title.isEmpty
         if q.title.isEmpty { q.title = tidy(input.replacingOccurrences(of: "?", with: "", options: .anchored)) }

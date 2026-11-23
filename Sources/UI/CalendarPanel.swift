@@ -612,9 +612,11 @@ struct EventCard: View {
                 }
                 if let location = event.location { Label(location.lowercased(), systemImage: "mappin") }
                 if event.tentative { Label("not settled", systemImage: "questionmark.circle") }
-                if !event.notes.isEmpty {
-                    Label(event.notes, systemImage: "text.alignleft").lineLimit(8).fixedSize(horizontal: false, vertical: true)
+                let words = NoteLinks.withoutLinks(event.notes)
+                if !words.isEmpty {
+                    Label(words, systemImage: "text.alignleft").lineLimit(8).fixedSize(horizontal: false, vertical: true)
                 }
+                ForEach(NoteLinks.links(in: event.notes), id: \.self) { url in LinkCard(url: url) }
             }
             .font(Theme.font(14))
             .foregroundStyle(Theme.secondary)

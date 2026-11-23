@@ -57,6 +57,8 @@ final class AppModel: ObservableObject {
     @Published var showAutosort = false
     /// Something being put on Google Calendar.
     @Published var calendarForm: EventForm?
+    /// The heading whose + was clicked: a line under it to add a task straight there.
+    @Published var addingTo: String?
 
     private let defaults = UserDefaults.standard
     private var forwarding: [AnyCancellable] = []
@@ -117,7 +119,8 @@ final class AppModel: ObservableObject {
     var groups: [TaskGroup] {
         let now = Date()
         let tasks = Views.tasks(for: place, in: snap, query: query, showDone: showDone, now: now)
-        return Views.groups(tasks, place: place, mode: groupMode(place), sort: sortMode(place), snap: snap, now: now)
+        return Views.groups(tasks, place: place, mode: groupMode(place), sort: sortMode(place), snap: snap, now: now,
+                            keepEmpty: place == .anytime && query == nil)
     }
 
     var visible: [TaskModel] { groups.flatMap(\.tasks) }
@@ -195,7 +198,7 @@ final class AppModel: ObservableObject {
         default:
             break
         }
-        if let group, let list = group.listId, !chosen, group.sectionId != nil { draft.listId = list; draft.sectionId = group.sectionId }
+        if let group, let list = group.listId, !chosen { draft.listId = list; draft.sectionId = group.sectionId }
         // Not filed anywhere: autosort's guess, if it's sure and that's wanted.
         if draft.listId == nil, draft.newListName == nil, suggestWhileTyping, let guess = suggestion(for: draft.title) { draft.listId = guess.list.id }
         var id = ""

@@ -251,7 +251,9 @@ enum Views {
 
     // MARK: - headings
 
-    static func groups(_ tasks: [TaskModel], place: Place, mode: GroupMode, sort: SortMode, snap: Snapshot, now: Date = Date()) -> [TaskGroup] {
+    /// `keepEmpty`: lists with nothing in them still get their heading (in all, unfiltered).
+    static func groups(_ tasks: [TaskModel], place: Place, mode: GroupMode, sort: SortMode, snap: Snapshot, now: Date = Date(),
+                       keepEmpty: Bool = false) -> [TaskGroup] {
         let today = Day.today(now)
         if place == .today {
             let sorted = Self.sorted(tasks, by: sort, now: now)
@@ -303,7 +305,7 @@ enum Views {
             let order = snap.sidebarOrder
             return order.compactMap { list in
                 let inList = tasks.filter { $0.listId == list.id }
-                guard !inList.isEmpty else { return nil }
+                guard !inList.isEmpty || (keepEmpty && !list.isDump && !list.archived) else { return nil }
                 return TaskGroup(id: "list:" + list.id, title: list.displayName, tasks: sorted(inList, by: sort, now: now),
                                  listId: list.id, sectionId: list.firstSection)
             }
