@@ -106,6 +106,9 @@ It's the v3 format Oyl's to-do store reads, grown:
 - **A row's sublist "add" line is hidden** until asked for (right-click › add to its sublist).
 - **Plain words** in what toyl says: no "puts it back"-style phrasing ("deleted", "restored").
 - **The last action** (`banner`) shows at the top right under the title and fades after a few seconds.
+- **Autosort everything** (`Actions.sortInbox`, the inbox's autosort button, ⌥⌘A, `toyl autosort --all`): a named
+  list, then the classifier (sure, with real word overlap), then Apple's model, which must also say YES to "same
+  kind of thing". Never a loose guess: what fits nowhere stays in the inbox.
 - **No timers bar at the window's foot.** A running timer shows on its task and in timers; one that's gone off
   is said at the top.
 - **Projects** live in a list (`list.projects: [{id, name}]`, `task.project`): big headings in a list's view

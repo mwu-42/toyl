@@ -78,6 +78,11 @@ struct Header: View {
                 .font(Theme.title)
                 .lineLimit(1)
             Spacer(minLength: 10)
+            if model.place == .inbox {
+                Quiet(label: model.sorting ? "sorting…" : "autosort", symbol: "wand.and.stars", size: 14, tint: Theme.ink) { model.autosortEverything() }
+                    .disabled(model.sorting)
+                    .help("file everything in the inbox where it belongs (⌥⌘A)")
+            }
             if model.place != .timers {
                 FilterField(model: model)
                 ViewMenu(model: model)
@@ -136,7 +141,8 @@ struct ViewMenu: View {
             Toggle("show done", isOn: $model.showDone)
             Divider()
             if place == .inbox {
-                Button("autosort the inbox…") { model.showAutosort = true }
+                Button("autosort everything") { model.autosortEverything() }
+                Button("look over autosort's guesses…") { model.showAutosort = true }
             }
             if case .list(let id) = place {
                 Button("new project") { model.newProject(in: id) }

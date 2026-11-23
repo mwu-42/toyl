@@ -338,6 +338,28 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Sorting everything in the inbox, now.
+    @Published var sorting = false
+
+    /// One click: every inbox task filed where it belongs (autosort, then Apple's on-device model
+    /// for the rest; what no list clearly fits stays). One change, so ⌘z undoes it all.
+    func autosortEverything() {
+        guard !sorting else { return }
+        let snap = self.snap
+        let count = snap.tasks.filter { $0.listId == ListModel.inbox && !$0.done && !$0.isIdea }.count
+        guard count > 0 else { banner = "the inbox is empty"; return }
+        sorting = true
+        let ask: ((TaskModel, [ListModel], [String: [String]]) async -> String?)? = OnDevice.isAvailable
+            ? { task, lists, examples in await OnDevice.list(for: task.title, among: lists, examples: examples) } : nil
+        Task { @MainActor in
+            let sorted = await Actions.sortInbox(snap, ask: ask)
+            sorting = false
+            let moves = sorted.suggestions.filter { $0.list != nil }
+            if !moves.isEmpty { withAnimation(.easeInOut(duration: 0.3)) { applyAutosort(sorted.suggestions) } }
+            banner = moves.isEmpty ? "no list fits these yet" : "sorted \(moves.count)" + (sorted.left.isEmpty ? "" : " · \(sorted.left.count) left")
+        }
+    }
+
     /// Asks Apple's on-device model where the inbox tasks autosort couldn't place belong.
     func autosortWithAppleIntelligence() {
         guard OnDevice.isAvailable else { banner = "apple intelligence isn't on, so autosort used what it learned alone"; return }

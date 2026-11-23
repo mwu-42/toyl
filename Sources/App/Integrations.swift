@@ -198,8 +198,8 @@ enum OnDevice {
         guard isAvailable, !lists.isEmpty else { return nil }
         let instructions = """
             You file to-do items into one of a person's lists. You're given the lists, each with a few of its items, \
-            then a new item. Reply with the exact name of the list it belongs in, or NONE if none clearly fits. \
-            Reply with the list's name only.
+            then a new item. Many items belong in none of them: reply NONE unless the item is clearly about one list's \
+            subject. Otherwise reply with the exact name of that list, and nothing else.
             """
         var prompt = "Lists:\n"
         for list in lists {
@@ -211,8 +211,25 @@ enum OnDevice {
         guard let response = try? await session.respond(to: prompt, options: GenerationOptions(temperature: 0.1, maximumResponseTokens: 24)) else { return nil }
         let answer = response.content.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'.*-")))
         guard answer.uppercased() != "NONE" else { return nil }
-        return lists.first { $0.name.caseInsensitiveCompare(answer) == .orderedSame }?.id
-            ?? lists.first { !$0.handle.isEmpty && TodQuick.words(answer).joined() == $0.handle }?.id
+        guard let picked = lists.first(where: { $0.name.caseInsensitiveCompare(answer) == .orderedSame })
+            ?? lists.first(where: { !$0.handle.isEmpty && TodQuick.words(answer).joined() == $0.handle }) else { return nil }
+        // Asked again, plainly, whether it's the same kind of thing: the model files eagerly.
+        return await belongs(title, in: picked, examples: examples[picked.id] ?? []) ? picked.id : nil
+    }
+
+    /// Whether a task is clearly the same kind of thing as a list's (its class, project, club, or
+    /// kind of errand), judged from the list's name and some of its tasks.
+    static func belongs(_ title: String, in list: ListModel, examples: [String]) async -> Bool {
+        guard isAvailable else { return false }
+        let instructions = """
+            You decide whether a to-do item belongs in a list, judging from the list's name and a few of its items. \
+            Say YES only if the item is clearly the same kind of thing: the same class, project, club, or kind of errand. \
+            If it would fit just as well somewhere else, or nowhere, say NO. Reply YES or NO only.
+            """
+        let prompt = "List: \(list.name)\nIts items: \(examples.prefix(8).joined(separator: "; "))\nItem: \(title)"
+        let session = LanguageModelSession(instructions: instructions)
+        guard let response = try? await session.respond(to: prompt, options: GenerationOptions(temperature: 0, maximumResponseTokens: 4)) else { return false }
+        return response.content.trimmingCharacters(in: .whitespacesAndNewlines).uppercased().hasPrefix("YES")
     }
 
     /// Whether an email needs doing, and if so the to-do for it (lower case, a few words); nil if not.

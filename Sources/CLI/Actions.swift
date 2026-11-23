@@ -326,6 +326,54 @@ enum Actions {
         }
     }
 
+    /// Everything in the inbox, sorted: where autosort's sure first; then, for the rest, what
+    /// `ask` (Apple's on-device model, when it's on) says. What's left is what no list clearly
+    /// fits: it stays in the inbox. Nothing's changed till the suggestions are applied.
+    static func sortInbox(_ snap: Snapshot, ask: ((TaskModel, [ListModel], [String: [String]]) async -> String?)? = nil) async -> (suggestions: [Suggestion], left: [TaskModel]) {
+        let classifier = Classifier(tasks: snap.tasks, lists: snap.lists)
+        let lists = snap.ownLists.filter { !$0.archived }
+        let inbox = snap.tasks.filter { $0.listId == ListModel.inbox && !$0.done && !$0.isIdea }
+        var suggestions: [Suggestion] = []
+        var unsure: [TaskModel] = []
+        for task in inbox {
+            let text = task.title + " " + task.notes
+            let tags = classifier.suggestTags(for: text).filter { !task.hasTag($0) }
+            if let named = namedList(in: task.title, lists: lists) {
+                // It says the list's name ("mint all hands slides"): there.
+                suggestions.append(Suggestion(task: task, list: named, confidence: 1, tags: tags))
+            } else if let guess = classifier.suggestList(for: text, threshold: 0.5), let list = snap.list(guess.id), !list.isSpecial {
+                suggestions.append(Suggestion(task: task, list: list, confidence: guess.confidence, tags: tags))
+            } else {
+                unsure.append(task)
+            }
+        }
+        let examples = Dictionary(grouping: snap.tasks.filter { !$0.isIdea && $0.listId != ListModel.inbox }, by: \.listId).mapValues { $0.prefix(8).map(\.title) }
+        var left: [TaskModel] = []
+        for task in unsure {
+            let text = task.title + " " + task.notes
+            let tags = classifier.suggestTags(for: text).filter { !task.hasTag($0) }
+            if let ask, let id = await ask(task, lists, examples), let list = snap.list(id), !list.isSpecial {
+                suggestions.append(Suggestion(task: task, list: list, confidence: 0.6, tags: tags))
+            } else {
+                left.append(task)
+            }
+        }
+        return (suggestions, left)
+    }
+
+    /// The list a title names, word for word ("cs 106b", "cs106b", "mint"), if just one does.
+    static func namedList(in title: String, lists: [ListModel]) -> ListModel? {
+        let words = TodQuick.words(title)
+        let squashed = words.joined()
+        let found = lists.filter { list in
+            let name = TodQuick.words(list.bareName)
+            guard !name.isEmpty, name.joined().count >= 3 else { return false }
+            if words.count >= name.count, (0...(words.count - name.count)).contains(where: { Array(words[$0..<($0 + name.count)]) == name }) { return true }
+            return name.count > 1 && words.contains(name.joined()) || (name.count == 1 && squashed == name[0])
+        }
+        return found.count == 1 ? found[0] : nil
+    }
+
     static func applyAutosort(_ suggestions: [Suggestion]) throws -> Snapshot {
         try save { doc in
             for s in suggestions {

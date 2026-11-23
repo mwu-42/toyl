@@ -383,7 +383,8 @@ struct SidebarRow: View {
             Button("rename") { model.renaming = "filter:" + id }
             Button("delete filter") { model.deleteFilter(id) }
         case .inbox:
-            Button("autosort the inbox…") { model.place = .inbox; model.showAutosort = true }
+            Button("autosort everything") { model.place = .inbox; model.autosortEverything() }
+            Button("look over autosort's guesses…") { model.place = .inbox; model.showAutosort = true }
         default:
             EmptyView()
         }

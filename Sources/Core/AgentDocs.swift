@@ -32,7 +32,7 @@ enum AgentDocs {
            - `toyl edit <id> --title … --due fri --time 17:00 --list cs --tag +reading -old --notes … --pin --someday --repeat weekly --duration 45m`
            - `toyl merge <list> [into]`: fold one list into another (the inbox, if none's named)
            - `toyl timer start <id> [25m]`, `toyl timer stop`, `toyl timers`
-           - `toyl new-list "name" [--group school]`, `toyl autosort [--apply]`
+           - `toyl new-list "name" [--group school]`, `toyl autosort [--apply|--all]` (`--all` sorts the whole inbox; what fits nowhere stays)
            - `toyl cal` (calendars and labels), `toyl cal suggest <task>`, `toyl cal add <title> --cal a --label "cs 106b" --day fri --start 3pm --end 4pm` \
         (checks the calendar rules; prints questions and exits 3 when something's missing)
            - `toyl mcp` runs the MCP server on stdin/stdout.

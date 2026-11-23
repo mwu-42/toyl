@@ -205,7 +205,8 @@ enum Tools {
                  object(["id": string("timer id, or task id/title")])),
             tool("list_timers", "list timers", "Timers going now, and the last ones that ended.", object([:]), readOnly: true, idempotent: true),
             tool("autosort_inbox", "autosort the inbox", "Suggests (or, with apply, makes) a list and tags for each inbox task, learned from where the user's other tasks are.",
-                 object(["apply": bool("file them (default: just suggest)")])),
+                 object(["apply": bool("file them (default: just suggest)"),
+                         "everything": bool("sort every inbox task now, asking Apple's on-device model about the unsure ones; what no list clearly fits stays in the inbox")])),
             tool("list_calendars", "list google calendars", "The user's Google calendars: each one's key (♡, a, c, e, g, r, v, x, m), what it's for, its labels, and what no label means. Read toyl://calendar.md for the rules.",
                  object([:]), readOnly: true, idempotent: true),
             tool("suggest_calendar_placement", "where it goes", "Which sub-calendar and label the user's rules put something on, and whether that's settled (sure) or needs asking.",
@@ -356,6 +357,12 @@ enum Tools {
                     "recent": snap.timerLog.prefix(10).map { ["label": $0.label, "seconds": Int($0.seconds), "ended": Ops.iso($0.ended)] as [String: Any] }]
         case "autosort_inbox":
             let snap = try Actions.snapshot()
+            if a["everything"] as? Bool == true {
+                let sorted = try waitFor { await Actions.sortInbox(snap) }
+                _ = try Actions.applyAutosort(sorted.suggestions)
+                return ["sorted": sorted.suggestions.filter { $0.list != nil }.map { ["task_id": $0.task.id, "title": $0.task.title, "list": $0.list?.displayName ?? ""] },
+                        "left": sorted.left.map { ["task_id": $0.id, "title": $0.title] }]
+            }
             let suggestions = Actions.autosort(snap)
             let apply = a["apply"] as? Bool ?? false
             if apply { _ = try Actions.applyAutosort(suggestions) }

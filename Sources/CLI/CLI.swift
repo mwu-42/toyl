@@ -306,6 +306,21 @@ enum CLI {
 
     private static func autosort(_ args: Args) throws {
         let snap = try Actions.snapshot()
+        if args.has("all") {
+            // Everything: sure guesses, then the on-device model for the rest (when it's on).
+            let ask: ((TaskModel, [ListModel], [String: [String]]) async -> String?)? = OnDevice.isAvailable
+                ? { task, lists, examples in await OnDevice.list(for: task.title, among: lists, examples: examples) } : nil
+            let sorted = try waitFor { await Actions.sortInbox(snap, ask: ask) }
+            _ = try Actions.applyAutosort(sorted.suggestions)
+            let moved = sorted.suggestions.filter { $0.list != nil }
+            if args.has("json") {
+                return print(Ops.text(["sorted": moved.map { ["task_id": $0.task.id, "title": $0.task.title, "list": $0.list?.displayName ?? ""] },
+                                       "left": sorted.left.map { ["task_id": $0.id, "title": $0.title] }]))
+            }
+            for s in moved { print("“\(s.task.title)” → \(s.list?.displayName ?? "")") }
+            print("sorted \(moved.count)" + (sorted.left.isEmpty ? "" : " · \(sorted.left.count) left (no list fits)"))
+            return
+        }
         let suggestions = Actions.autosort(snap)
         let rows = suggestions.map { s -> [String: Any] in
             var row: [String: Any] = ["task_id": s.task.id, "title": s.task.title]
@@ -322,7 +337,7 @@ enum CLI {
             if !s.tags.isEmpty { said += " " + s.tags.map { "#" + $0 }.joined(separator: " ") }
             print(said)
         }
-        if !args.has("apply") { print("\ntoyl autosort --apply to file them") }
+        if !args.has("apply") { print("\ntoyl autosort --apply to file them · toyl autosort --all to sort everything") }
     }
 
     // MARK: - google calendar

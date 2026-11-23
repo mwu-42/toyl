@@ -225,7 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc func blockOnCalendar() { model.addToCalendar(model.selectedTask) }
     @objc func findTime() { if let task = model.selectedTask { model.calendar.schedule(task) } }
     @objc func breakDown() { if let task = model.selectedTask { model.breakDown(task) } }
-    @objc func autosort() { model.place = .inbox; model.showAutosort = true; showMain() }
+    @objc func autosort() { model.place = .inbox; model.autosortEverything() }
     @objc func toggleDone() { model.showDone.toggle() }
     @objc func toggleSidebar() { model.showSidebar.toggle() }
     @objc func toggleDetails() { model.setShown(.details, !model.showInspector) }

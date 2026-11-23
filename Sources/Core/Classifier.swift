@@ -49,11 +49,13 @@ struct Classifier {
         let words = Self.words(text).filter { vocabulary.contains($0) }
         let classes = docs.filter { $0.value >= 2 }
         guard !words.isEmpty, classes.count >= 1 else { return nil }
-        let total = Double(classes.values.reduce(0, +))
+        // A softened prior (the square root of each list's size), so the biggest list doesn't win
+        // whatever it's shown.
+        let total = classes.values.reduce(0.0) { $0 + Double($1).squareRoot() }
         let size = Double(vocabulary.count)
         var scores: [(String, Double)] = []
         for (id, n) in classes {
-            var score = log(Double(n) / total)
+            var score = log(Double(n).squareRoot() / total)
             let words_c = counts[id] ?? [:]
             let total_c = Double(totals[id] ?? 0)
             for word in words { score += log((Double(words_c[word] ?? 0) + 1) / (total_c + size)) }
@@ -109,5 +111,9 @@ struct Classifier {
         "to", "of", "in", "on", "at", "by", "an", "or", "is", "it", "be", "as", "do", "my", "me", "up", "so", "if",
         "get", "go", "out", "off", "over", "some", "all", "any", "more", "also", "just", "need", "needs", "should",
         "will", "can", "could", "would", "have", "has", "had", "are", "was", "were", "not", "no", "yes", "you", "your",
+        // Everyday verbs and days, which say nothing about where a task belongs.
+        "pick", "make", "take", "put", "set", "start", "finish", "check", "look", "find", "try", "add", "new", "due",
+        "today", "tonight", "tomorrow", "week", "next", "mon", "tue", "wed", "thu", "fri", "sat", "sun", "monday",
+        "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "am", "pm",
     ]
 }
