@@ -52,7 +52,7 @@ open behind what you're doing (in front only if you were using toyl), never taki
 - ⏱ **timers on any task** (a running one shows on its task, and in timers; nothing at the window's foot): swipe it softly left, right-click › timer for a length, or pick one in its details: 10m · 30m · 1h · 6h · 24h, or type one. time adds up on the task.
 - 🔗 **links in notes are cards** in the details: the page's icon and title; click to open. rows stay plain.
 - ➕ **every list has its heading in all**, empty or not, with a + on the right to add straight into it.
-- 🪄 **autosort**: files new tasks where your others go (on the mac). in the inbox, the **autosort** button (⌥⌘A) sorts everything at once:
+- 🪄 **autosort**: files new tasks where your others go (on the mac). the 🪄 by the filter (in all and the inbox, or ⌥⌘A) sorts everything in the inbox at once:
   - a task naming a list goes there ("mint all hands slides" → mint); then where autosort's sure; then apple intelligence, which has to agree twice
   - what clearly fits nowhere stays in the inbox · ⌘z undoes the whole sort · "look over autosort's guesses…" (the inbox's menu) to go one by one
 - 🔎 **filters**: `#tag`, `in:cs`, `due:week`, `is:late`… save one as a list.

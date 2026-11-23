@@ -78,10 +78,15 @@ struct Header: View {
                 .font(Theme.title)
                 .lineLimit(1)
             Spacer(minLength: 10)
-            if model.place == .inbox {
-                Quiet(label: model.sorting ? "sorting…" : "autosort", symbol: "wand.and.stars", size: 14, tint: Theme.ink) { model.autosortEverything() }
-                    .disabled(model.sorting)
-                    .help("file everything in the inbox where it belongs (⌥⌘A)")
+            if model.place == .inbox || model.place == .anytime {
+                // Autosort: a small wand that files everything in the inbox where it belongs.
+                if model.sorting {
+                    ProgressView().controlSize(.small).frame(width: 18)
+                        .help("sorting the inbox…")
+                } else {
+                    Quiet(label: "", symbol: "wand.and.stars", size: 15) { model.autosortEverything() }
+                        .help("autosort: file everything in the inbox where it belongs (⌥⌘A)")
+                }
             }
             if model.place != .timers {
                 FilterField(model: model)
