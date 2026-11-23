@@ -25,6 +25,7 @@ background with its window hidden, and never jumps in front of what you're doing
   - click an event for its details · ⌥⌘[ and ⌥⌘] for the day before and after
 - ↔️ **panels resize**: drag the line between them · double-click it for the usual width.
 - ✉️ **important email**: gmail and outlook, pulled into the inbox and flagged ✉ email. below.
+- ☑️ **sublists**: a task's sublist shows right under it. select the task to add to it · ✨ "break it down" makes one with apple intelligence.
 - 💡 **ideas**: loose ideas (`?` first) and anything put off (`/idea`, or drag it onto ideas). it keeps its list.
 - ⌨️ **quick add** reads what you type: `essay draft fri 5pm #cs ~2h !`
   - `#cs` list or tag · `~list` a list · `?` an idea
@@ -45,12 +46,13 @@ toyl talks to Google Calendar directly. It reads your calendars, their labels an
 and adds events the way your calendar rules say.
 
 **One-time setup, about five minutes.** Google gives each person's own app its own key.
-1. Make a project in Google Cloud and turn on the Google Calendar API.
-2. In Google Auth Platform › Audience, choose External and add your address as a test user. Then
-   publish it ("In production"), so Google doesn't sign toyl out every week.
-3. Under Clients, make a "Desktop app" client and download its JSON.
-4. In toyl: settings › google calendar, paste the JSON, then connect. (Or run
-   `toyl google client ~/Downloads/client_secret_….json`, then `toyl google connect`.)
+- In Google Cloud:
+  - a project, with the Google Calendar API turned on
+  - Google Auth Platform › Audience: External, your address as a test user, then published ("In production"),
+    so Google doesn't sign toyl out every week
+  - Clients: a "Desktop app" client, its JSON downloaded
+- In toyl: settings › google calendar, paste the JSON, then connect
+  - or `toyl google client ~/Downloads/client_secret_….json`, then `toyl google connect`
 
 The client and your sign-in are kept in your keychain, not in toyl's folder.
 
@@ -86,11 +88,13 @@ link back to the message (`is:email` finds them):
 In Google Cloud, also turn on the Gmail API for the same project.
 
 **outlook** (stanford's mail, or outlook.com): it needs an app of your own, once.
-1. entra.microsoft.com › app registrations › new registration (any name; "accounts in any organizational directory and personal accounts").
-2. Authentication › add a platform › mobile and desktop applications › redirect URI `http://localhost`.
-3. API permissions › Microsoft Graph › delegated › `Mail.Read` (and `User.Read`).
-4. Copy its Application (client) ID into settings › email, then connect. (Or `toyl mail outlook client <id>` then
-   `toyl mail outlook connect`.) A school account may need its IT to allow the app.
+- In entra.microsoft.com › app registrations, a new registration:
+  - any name; "accounts in any organizational directory and personal accounts"
+  - Authentication › mobile and desktop applications › redirect URI `http://localhost`
+  - API permissions › Microsoft Graph › delegated › `Mail.Read` (and `User.Read`)
+- In toyl: settings › email, paste its Application (client) ID, then connect
+  - or `toyl mail outlook client <id>`, then `toyl mail outlook connect`
+  - a school account may need its IT to allow the app
 
 `toyl mail pull` (or the `pull_email` tool) checks now. Each message is judged once.
 

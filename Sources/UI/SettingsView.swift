@@ -74,10 +74,14 @@ struct SettingsView: View {
             section("google calendar", "calendar")
             switch calendar.state {
             case .setUp:
-                row("1.circle", "turn on the calendar api") { open("https://console.cloud.google.com/apis/library/calendar-json.googleapis.com") }
-                row("2.circle", "audience: external, add you, publish") { open("https://console.cloud.google.com/auth/audience") }
-                row("3.circle", "new desktop client, download its json") { open("https://console.cloud.google.com/auth/clients") }
-                row("4.circle", "paste it here, then connect") { EmptyView() }
+                row("wrench.and.screwdriver", "set up, once", hint: "in google cloud") { EmptyView() }
+                VStack(alignment: .leading, spacing: 8) {
+                    row("power", "calendar api on") { open("https://console.cloud.google.com/apis/library/calendar-json.googleapis.com") }
+                    row("person.2", "audience: external, add you, publish") { open("https://console.cloud.google.com/auth/audience") }
+                    row("key", "new desktop client, its json") { open("https://console.cloud.google.com/auth/clients") }
+                    row("doc.on.clipboard", "paste it here, then connect") { EmptyView() }
+                }
+                .padding(.leading, 28)
                 clientField
             case .signedOut:
                 row("link", "connect google calendar", hint: "signs in in your browser") {
@@ -200,7 +204,7 @@ struct SettingsView: View {
             section("autosort", "wand.and.stars")
             switchRow("arrow.triangle.branch", "file new tasks for me", hint: "only when it's sure", $model.suggestWhileTyping)
             row("apple.intelligence", OnDevice.isAvailable ? "apple intelligence on" : "apple intelligence off",
-                hint: OnDevice.isAvailable ? "asks it when unsure · breaks tasks into steps" : "turn it on to break tasks into steps") { EmptyView() }
+                hint: OnDevice.isAvailable ? "asks it when unsure · makes sublists" : "turn it on for sublists") { EmptyView() }
         }
     }
 
@@ -297,10 +301,10 @@ struct MailSection: View {
         case .setUp:
             line("envelope.badge", "outlook", hint: "needs an app of your own, once") { EmptyView() }
             VStack(alignment: .leading, spacing: 8) {
-                line("1.circle", "entra › app registrations › new") { open("https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade") }
-                line("2.circle", "mobile and desktop: http://localhost") { EmptyView() }
-                line("3.circle", "api permissions: mail.read") { EmptyView() }
-                line("4.circle", "paste its client id") { EmptyView() }
+                line("plus.app", "entra › app registrations › new") { open("https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade") }
+                line("laptopcomputer", "mobile and desktop: http://localhost") { EmptyView() }
+                line("lock.open", "api permissions: mail.read") { EmptyView() }
+                line("doc.on.clipboard", "paste its client id") { EmptyView() }
                 HStack(spacing: 10) {
                     PlainField(text: $clientText, placeholder: "client id", font: Theme.nsFont(14), onSubmit: save)
                         .frame(height: 18)

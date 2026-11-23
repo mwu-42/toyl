@@ -94,7 +94,10 @@ enum CLI {
         }
         for group in groups where !group.tasks.isEmpty {
             if let title = group.title { lines.append(title + (group.subtitle.map { " · " + $0 } ?? "")) }
-            for task in group.tasks { lines.append("  " + Ops.line(task, in: snap, now: now, showList: !isListPlace(place))) }
+            for task in group.tasks {
+                lines.append("  " + Ops.line(task, in: snap, now: now, showList: !isListPlace(place)))
+                lines += Ops.sublist(task)
+            }
         }
         print(lines.isEmpty ? "nothing here" : lines.joined(separator: "\n"))
     }
@@ -165,7 +168,7 @@ enum CLI {
         for day in agenda {
             print(Format.day(day.day, now: now) + " · " + Format.shortDay(day.day))
             for event in day.events { print("   " + Format.span(event.start, event.end, allDay: event.allDay) + "  " + event.title) }
-            for task in day.tasks { print("  " + Ops.line(task, in: snap, now: now)) }
+            for task in day.tasks { print("  " + Ops.line(task, in: snap, now: now)); Ops.sublist(task).forEach { print($0) } }
             if day.events.isEmpty && day.tasks.isEmpty { print("  nothing") }
         }
     }

@@ -116,6 +116,11 @@ enum Ops {
     }
 
     /// A task as a line of text: "[ ] essay draft · today 5pm · #writing · cs 106b  (ab12cde)".
+    /// A task's sublist, a line each, indented under it.
+    static func sublist(_ t: TaskModel) -> [String] {
+        t.subtasks.map { "      [\($0.done ? "x" : " ")] " + $0.title }
+    }
+
     static func line(_ t: TaskModel, in snap: Snapshot, now: Date = Date(), showList: Bool = true) -> String {
         var parts = [(t.done ? "[x] " : "[ ] ") + t.title]
         if let when = Format.due(t, now: now) { parts.append(t.isLate(at: now) && !when.contains("late") && when != "yesterday" ? when + " (late)" : when) }
@@ -125,7 +130,6 @@ enum Ops {
         if t.pinned { parts.append("pinned") }
         if !t.tags.isEmpty { parts.append(t.tags.map { "#" + $0 }.joined(separator: " ")) }
         if showList, let list = snap.list(t.listId) { parts.append(list.displayName) }
-        if !t.subtasks.isEmpty { let p = t.subtaskProgress; parts.append("\(p.done)/\(p.total)") }
         return parts.joined(separator: " · ") + "  (\(t.id))"
     }
 

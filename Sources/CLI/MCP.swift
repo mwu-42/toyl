@@ -159,14 +159,14 @@ enum Tools {
     static var definitions: [[String: Any]] {
         var add = taskFields
         add["text"] = string("quick add: the whole task in words, e.g. \"essay draft fri 5pm #cs ~2h\" (#word is a list if one is named so, else a tag; \"by fri\" is an aim; \"!\" pins; \" // \" starts notes). Fields given apart win over what text says.")
-        add["subtasks"] = strings("subtasks to add")
+        add["subtasks"] = strings("its sublist: items to add under it (call it a sublist to the user, not steps)")
         add["idea"] = bool("put it in ideas (loose ideas, to come back to)")
         var update = taskFields
         update["id"] = string("the task's id (or its exact title)")
         update["add_tags"] = strings("tags to add")
         update["remove_tags"] = strings("tags to take off")
-        update["add_subtasks"] = strings("subtasks to add")
-        update["complete_subtasks"] = strings("subtask ids or titles to tick off")
+        update["add_subtasks"] = strings("items to add to its sublist")
+        update["complete_subtasks"] = strings("sublist item ids or titles to tick off")
         update.removeValue(forKey: "tags")
         update["tags"] = strings("replace all its tags with these")
         return [

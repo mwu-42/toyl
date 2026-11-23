@@ -88,6 +88,8 @@ It's the v3 format Oyl's to-do store reads, grown:
   anything put off: `someday` in the file), timers. No upcoming or logbook in the window (the command line and
   agents can still ask for them).
 - **Late is quiet**: a soft red date and nothing else. No badges, red headings or red circles.
+- **Sublists, not steps**: a task's sub-items (`subtasks` in the file) are its sublist, always shown under it in
+  the list. Setup instructions are indented sublists too, never numbered steps.
 - **Prompts are a word or two**: "new task", "when", "how long". No examples in fields.
 - **Panels resize** by dragging the line between them (`PanelDivider`); widths are kept.
 - **The calendar panel** (`CalendarPanel`) is Google Calendar itself, so it shows everything on the shown

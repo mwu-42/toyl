@@ -45,7 +45,7 @@ struct TaskDetail: View {
     @Local private var aim = ""
     @Local private var length = ""
     @Local private var newTag = ""
-    @Local private var newStep = ""
+    @Local private var newItem = ""
     @Local private var timerText = ""
     @FocusState private var notesFocused: Bool
 
@@ -81,7 +81,7 @@ struct TaskDetail: View {
                 if let email = task.email { emailRow(email) }
                 tags
                 Hairline()
-                steps
+                sublist
                 notesEditor
                 Hairline()
                 timer(now: now)
@@ -252,38 +252,38 @@ struct TaskDetail: View {
         model.store.update(task.id, "tag", p)
     }
 
-    // MARK: steps and notes
+    // MARK: sublist and notes
 
-    private var steps: some View {
+    private var sublist: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
-                Label("steps", systemImage: "checklist").font(Theme.font(13.5)).foregroundStyle(Theme.faint)
+                Label("sublist", systemImage: "list.bullet.indent").font(Theme.font(13.5)).foregroundStyle(Theme.faint)
                 Spacer()
                 if OnDevice.isAvailable {
                     if model.thinking == task.id {
                         Text("thinking…").font(Theme.meta).foregroundStyle(Theme.faint)
                     } else {
                         Quiet(label: "break it down", symbol: "sparkles", size: 12.5) { model.breakDown(task) }
-                            .help("apple intelligence suggests a few steps, on the mac")
+                            .help("apple intelligence makes a sublist, on the mac")
                     }
                 }
             }
-            ForEach(task.subtasks) { step in StepRow(model: model, task: task, step: step) }
+            ForEach(task.subtasks) { item in SublistRow(model: model, task: task, item: item) }
             HStack(spacing: 8) {
                 Image(systemName: "plus").font(.system(size: 10)).foregroundStyle(Theme.faint).frame(width: 14)
-                PlainField(text: $newStep, placeholder: "step", font: Theme.nsFont(15), onSubmit: addStep)
+                PlainField(text: $newItem, placeholder: "add", font: Theme.nsFont(15), onSubmit: addItem)
                     .frame(height: 19)
             }
         }
     }
 
-    private func addStep() {
-        let text = newStep.trimmingCharacters(in: .whitespaces)
-        newStep = ""
+    private func addItem() {
+        let text = newItem.trimmingCharacters(in: .whitespaces)
+        newItem = ""
         guard !text.isEmpty else { return }
         var p = TaskPatch()
         p.subtasks = task.subtasks + [Subtask(title: text)]
-        model.store.update(task.id, "add step", p)
+        model.store.update(task.id, "add to sublist", p)
     }
 
     private var notesEditor: some View {
@@ -461,28 +461,28 @@ struct MenuLabel: View {
     }
 }
 
-/// One of a task's steps.
-struct StepRow: View {
+/// One line of a task's sublist, to change in place.
+struct SublistRow: View {
     @ObservedObject var model: AppModel
     let task: TaskModel
-    let step: Subtask
+    let item: Subtask
     @Local private var text = ""
     @Local private var hovering = false
 
     var body: some View {
         HStack(spacing: 8) {
-            CheckCircle(done: step.done, size: 14)
+            CheckCircle(done: item.done, size: 14)
                 .onTapGesture { change { $0.done.toggle() } }
-            PlainField(text: $text, font: Theme.nsFont(15), color: step.done ? Theme.nsSecondary : Theme.nsInk,
+            PlainField(text: $text, font: Theme.nsFont(15), color: item.done ? Theme.nsSecondary : Theme.nsInk,
                        onSubmit: save, onEnd: save)
                 .frame(height: 19)
-                .onAppear { text = step.title }
-                .onChange(of: step.title) { _, title in text = title }
+                .onAppear { text = item.title }
+                .onChange(of: item.title) { _, title in text = title }
             if hovering {
                 Quiet(label: "", symbol: "xmark", size: 10) {
                     var p = TaskPatch()
-                    p.subtasks = task.subtasks.filter { $0.id != step.id }
-                    model.store.update(task.id, "remove step", p)
+                    p.subtasks = task.subtasks.filter { $0.id != item.id }
+                    model.store.update(task.id, "remove from sublist", p)
                 }
             }
         }
@@ -491,17 +491,17 @@ struct StepRow: View {
 
     private func save() {
         let title = text.trimmingCharacters(in: .whitespaces)
-        guard !title.isEmpty, title != step.title else { return }
+        guard !title.isEmpty, title != item.title else { return }
         change { $0.title = title }
     }
 
     private func change(_ edit: (inout Subtask) -> Void) {
-        var steps = task.subtasks
-        guard let index = steps.firstIndex(where: { $0.id == step.id }) else { return }
-        edit(&steps[index])
+        var items = task.subtasks
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        edit(&items[index])
         var p = TaskPatch()
-        p.subtasks = steps
-        model.store.update(task.id, "step", p)
+        p.subtasks = items
+        model.store.update(task.id, "sublist", p)
     }
 }
 

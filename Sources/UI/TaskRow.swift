@@ -39,6 +39,10 @@ struct TaskRow: View {
                         .animation(.easeOut(duration: 0.2), value: done)
                 }
                 if let meta = metaLine { meta.font(Theme.meta).lineLimit(1) }
+                if !task.subtasks.isEmpty || (selected && model.selection.count == 1 && !done) {
+                    Sublist(model: model, task: task, adding: selected && model.selection.count == 1 && !done)
+                        .padding(.top, 3)
+                }
             }
             Spacer(minLength: 6)
             if let timer {
@@ -98,7 +102,7 @@ struct TaskRow: View {
     }
 
     /// What's known about it, in a line: when, its aim, how it repeats, how long it takes, the
-    /// list it's in (where that's not obvious), its tags, its steps, its notes.
+    /// list it's in (where that's not obvious), its tags, its notes. (Its sublist shows under it.)
     private var metaLine: Text? {
         var parts: [Text] = []
         let today = Day.today(now)
@@ -124,10 +128,6 @@ struct TaskRow: View {
             }
         }
         if !task.tags.isEmpty { parts.append(Text(task.tags.map { "#" + model.display($0) }.joined(separator: " "))) }
-        if !task.subtasks.isEmpty {
-            let p = task.subtaskProgress
-            parts.append(Text(Image(systemName: "checklist")) + Text(" \(p.done)/\(p.total)"))
-        }
         if !task.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { parts.append(Text(Image(systemName: "text.alignleft"))) }
         if task.event != nil { parts.append(Text(Image(systemName: "calendar"))) }
         if task.pinned { parts.append(Text(Image(systemName: "pin.fill")).foregroundColor(Theme.accent)) }
@@ -250,7 +250,7 @@ struct TaskMenu: View {
                 Button(one.duration == nil ? "find time for it (set how long it takes first)" : "find time for it") { model.calendar.schedule(one) }
                     .disabled(one.duration == nil)
             }
-            if OnDevice.isAvailable { Button("break it into steps") { model.breakDown(one) } }
+            if OnDevice.isAvailable { Button("break it into a sublist") { model.breakDown(one) } }
         }
         Divider()
         Button("copy for an agent") { model.copyForAgent(ids) }
@@ -258,5 +258,68 @@ struct TaskMenu: View {
             model.selection = Set(ids)
             model.deleteSelected()
         }
+    }
+}
+
+/// A task's sublist, right under it in the list: each one checked off on its own; with the task
+/// selected, a line to add another.
+struct Sublist: View {
+    @ObservedObject var model: AppModel
+    let task: TaskModel
+    var adding = false
+    @Local private var text = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(task.subtasks) { item in
+                HStack(spacing: 8) {
+                    CheckCircle(done: item.done, size: 13)
+                        .onTapGesture { change(item.id) { $0.done.toggle() } }
+                    Text(model.display(item.title))
+                        .font(Theme.font(15))
+                        .foregroundStyle(item.done ? Theme.secondary : Theme.ink)
+                        .strikethrough(item.done, color: Theme.faint)
+                        .animation(.easeOut(duration: 0.2), value: item.done)
+                }
+                .contextMenu {
+                    Button(item.done ? "uncheck" : "check off") { change(item.id) { $0.done.toggle() } }
+                    Button("remove from the sublist") { remove(item.id) }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+            if adding {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus").font(.system(size: 9)).foregroundStyle(Theme.faint).frame(width: 13)
+                    PlainField(text: $text, placeholder: "add", font: Theme.nsFont(15), onSubmit: add,
+                               onEscape: { text = ""; model.focusList += 1 })
+                        .frame(height: 19)
+                }
+            }
+        }
+        .animation(.snappy(duration: 0.22), value: task.subtasks.map(\.id))
+    }
+
+    private func add() {
+        let title = text.trimmingCharacters(in: .whitespaces)
+        text = ""
+        guard !title.isEmpty, let current = model.snap.task(task.id) else { return }
+        var p = TaskPatch()
+        p.subtasks = current.subtasks + [Subtask(title: title)]
+        model.store.update(task.id, "add to sublist", p)
+    }
+
+    private func change(_ id: String, _ edit: (inout Subtask) -> Void) {
+        guard var items = model.snap.task(task.id)?.subtasks, let index = items.firstIndex(where: { $0.id == id }) else { return }
+        edit(&items[index])
+        var p = TaskPatch()
+        p.subtasks = items
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.6)) { model.store.update(task.id, "sublist", p) }
+    }
+
+    private func remove(_ id: String) {
+        guard let items = model.snap.task(task.id)?.subtasks else { return }
+        var p = TaskPatch()
+        p.subtasks = items.filter { $0.id != id }
+        model.store.update(task.id, "remove from sublist", p)
     }
 }

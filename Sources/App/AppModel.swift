@@ -261,14 +261,14 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Breaks the task into steps (as subtasks) with Apple's on-device model.
+    /// Breaks the task into a sublist (`subtasks` in the file) with Apple's on-device model.
     func breakDown(_ task: TaskModel) {
-        guard OnDevice.isAvailable else { banner = "breaking a task down needs apple intelligence on"; return }
+        guard OnDevice.isAvailable else { banner = "a sublist from apple intelligence needs it on"; return }
         thinking = task.id
         Task { @MainActor in
             let steps = await OnDevice.steps(for: task.title, notes: task.notes)
             thinking = nil
-            guard !steps.isEmpty, let current = snap.task(task.id) else { banner = "couldn't come up with steps for that one"; return }
+            guard !steps.isEmpty, let current = snap.task(task.id) else { banner = "couldn't make a sublist for that one"; return }
             var p = TaskPatch()
             p.subtasks = current.subtasks + steps.map { Subtask(title: $0) }
             store.update(task.id, "break down", p)

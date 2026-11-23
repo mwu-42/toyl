@@ -53,7 +53,8 @@ enum AgentDocs {
         a task at the top of today. **Putting it off** (`someday` in the file) moves it into ideas.
         - **Tags** are plain words (`#reading`). **Repeat** is one of daily, weekdays, weekly, biweekly, monthly, \
         yearly: checking a repeating task off adds the next one. **Duration** is minutes it should take. \
-        **Spent** is seconds timed on it.
+        **Spent** is seconds timed on it. A task's **sublist** (`subtasks` in the file) shows under it in the list: \
+        call it a sublist, not steps.
         - **Today** shows what's due or aimed for today or before, plus pinned tasks. **All** (`anytime` in the file and commands) is everything open, and where the window opens. \
         **Ideas** holds loose ideas and anything put off. (Agents can also ask for upcoming, dated later, and logbook, done.)
         - Text is shown in lower case, but keep the case the person typed. Don't capitalize their words.

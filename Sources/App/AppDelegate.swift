@@ -326,7 +326,7 @@ enum Menus {
             item("stopwatch", #selector(AppDelegate.stopwatch), target: app),
             item("add to google calendar…", #selector(AppDelegate.blockOnCalendar), "g", [.command, .shift], target: app),
             item("find time for it", #selector(AppDelegate.findTime), target: app),
-            item("break it into steps", #selector(AppDelegate.breakDown), target: app),
+            item("break it into a sublist", #selector(AppDelegate.breakDown), target: app),
             .separator(),
             item("autosort the inbox", #selector(AppDelegate.autosort), "a", [.command, .option], target: app),
             item("copy for an agent", #selector(AppDelegate.copyForAgent), "c", [.command, .shift], target: app),
