@@ -399,12 +399,12 @@ final class PhoneLink: ObservableObject {
             guard let t = task() else { return .json(["error": "that's gone"], status: 404) }
             if verb == "delete" { deleted = model.store.doc[task: t.id] }
             model.store.delete([t.id])
-            said = verb == "delete" ? "deleted" : "taken back"
+            said = verb == "delete" ? "deleted" : "removed"
         case "restore":
-            guard let entry = deleted, let id = entry["id"] as? String, model.snap.task(id) == nil else { return .json(["error": "nothing to put back"], status: 404) }
+            guard let entry = deleted, let id = entry["id"] as? String, model.snap.task(id) == nil else { return .json(["error": "nothing to restore"], status: 404) }
             deleted = nil
-            model.store.change("put back") { $0[task: id] = entry }
-            said = "put back"
+            model.store.change("restore") { $0[task: id] = entry }
+            said = "restored"
         case "progress":
             guard let t = task() else { return .json(["error": "that's gone"], status: 404) }
             if f["timer"] as? Bool == true {
@@ -413,7 +413,7 @@ final class PhoneLink: ObservableObject {
             } else {
                 let was = model.isInProgress(t)
                 model.toggleInProgress(t.id)
-                said = was ? "back to to-do" : "in progress"
+                said = was ? "not in progress" : "in progress"
             }
         case "timer":
             let minutes = (f["minutes"] as? NSNumber)?.doubleValue

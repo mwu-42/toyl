@@ -4,7 +4,7 @@ import Foundation
 /// Code). Every command can answer in JSON (`--json`).
 enum CLI {
     static let commands: Set<String> = [
-        "help", "today", "inbox", "upcoming", "anytime", "all", "someday", "logbook", "ideas", "ls", "list", "search", "show",
+        "help", "today", "inbox", "upcoming", "anytime", "all", "someday", "logbook", "ideas", "progress", "ls", "list", "search", "show",
         "add", "idea", "done", "undo", "undone", "rm", "delete", "edit", "lists", "tags", "new-list", "agenda", "overview",
         "timer", "timers", "autosort", "md", "json", "path", "agents", "open", "mcp", "version", "connect", "google", "cal", "mail", "merge", "canvas", "project", "projects",
         "--help", "-h", "--version",
@@ -26,7 +26,7 @@ enum CLI {
             switch command {
             case "help", "--help", "-h": print(help)
             case "version", "--version": print("toyl \(version)")
-            case "today", "inbox", "upcoming", "anytime", "all", "someday", "logbook", "ideas":
+            case "today", "inbox", "upcoming", "anytime", "all", "someday", "logbook", "ideas", "progress":
                 try show(place: Place(key: command)!, args: args)
             case "ls", "list", "search": try list(args)
             case "show": try showTask(args)
@@ -682,7 +682,7 @@ enum CLI {
         toyl: things off your list
 
           toyl                         what's on today
-          toyl all|today|inbox|ideas [filter]   (and upcoming, logbook)
+          toyl all|today|inbox|progress|ideas [filter]   (and upcoming, logbook)
           toyl mail [pull [--dry-run]|gmail on|off|outlook client <id>|outlook connect|ask on|off]
           toyl merge <list> [into]        fold a list into another (the inbox, if none)
           toyl projects [list] · toyl project add|rm <list> <name> · toyl project from <task> · add/edit --project <name|none>

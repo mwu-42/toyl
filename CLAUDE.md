@@ -89,7 +89,8 @@ It's the v3 format Oyl's to-do store reads, grown:
 - **Quiet, like Notes**: plain word buttons and hairline rules. Always light.
 - **Icons and a few words**, never paragraphs: every description in the app is an SF Symbol and a short phrase.
 - **Quick, small animations** (0.2–0.4s): a check pops and fades out, new rows slide in, counts roll.
-- **Places**: all (`anytime` inside; first, and where the window opens), inbox, today, ideas (loose ideas and
+- **Places**: all (`anytime` inside; first, and where the window opens), inbox, today, in progress (`inProgress`:
+  tasks in an "in progress" section, timers going first; a timer alone doesn't put a task there), ideas (loose ideas and
   anything put off: `someday` in the file), timers. No upcoming or logbook in the window (the command line and
   agents can still ask for them). **No line of description under a place's title.**
 - **Panels** (`Panel`, `AppModel.panelOrder`): to-dos, details, calendar by default, dragged into any order by
@@ -99,9 +100,12 @@ It's the v3 format Oyl's to-do store reads, grown:
   calendar. With the page hidden, the calendar (else the description) takes the spare width (`fillingPanel`).
 - Quick entry from anywhere is ⌘⌥X. The calendar has no shortcut of its own; ⌘= and ⌘- (and a pinch) zoom its
   hours (`calendarZoom`) about the pointer or the pinch.
-- **Swipes rubber-band** (`AppModel.rubber`): free for 200 points, then harder, never past 360. Right 70: in
-  progress; right 280: in progress and a timer. Left with a timer going: 120 stops it, 280 deletes; left with
-  none: 170 deletes.
+- **Swipes rubber-band** (`AppModel.rubber`): free for 200 points, then harder, never past 360. Soft (110):
+  right, in progress; left, a timer (or stop the one going). Hard (240): right, in progress and a timer; left,
+  delete. Rows have no timer button: the soft left swipe is it.
+- **A row's sublist "add" line is hidden** until asked for (right-click › add to its sublist).
+- **Plain words** in what toyl says: no "puts it back"-style phrasing ("deleted", "restored").
+- **The last action** (`banner`) shows at the top right under the title and fades after a few seconds.
 - **No timers bar at the window's foot.** A running timer shows on its task and in timers; one that's gone off
   is said at the top.
 - **Projects** live in a list (`list.projects: [{id, name}]`, `task.project`): big headings in a list's view

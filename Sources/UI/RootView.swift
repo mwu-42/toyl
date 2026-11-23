@@ -418,6 +418,8 @@ struct SidebarRow: View {
             if !putOff.isEmpty { model.toggleSomeday(putOff) }
             return !text.isEmpty || !putOff.isEmpty
         case .today: model.setDue(Day.today(), for: ids)
+        case .inProgress:
+            for id in ids where snap.task(id).map({ !model.isInProgress($0) }) ?? false { model.toggleInProgress(id) }
         case .tag(let tag): model.store.update(ids, "tag") { _ in var p = TaskPatch(); p.addTags = [tag]; return p }
         default: return false
         }

@@ -39,8 +39,8 @@ struct TaskRow: View {
                         .animation(.easeOut(duration: 0.2), value: done)
                 }
                 if let meta = metaLine { meta.font(Theme.meta).lineLimit(1) }
-                if !task.subtasks.isEmpty || (selected && model.selection.count == 1 && !done) {
-                    Sublist(model: model, task: task, adding: selected && model.selection.count == 1 && !done)
+                if !task.subtasks.isEmpty || (model.addingSublist == task.id && !done) {
+                    Sublist(model: model, task: task, adding: model.addingSublist == task.id && !done)
                         .padding(.top, 3)
                 }
             }
@@ -48,12 +48,6 @@ struct TaskRow: View {
             if let timer {
                 TimerChip(model: model, timer: timer, now: now)
                     .transition(.scale(scale: 0.6).combined(with: .opacity))
-            } else if hovering, !done {
-                Quiet(label: "", symbol: "timer", size: 15) { model.timer(task) }
-                    .help("start a timer: \(task.duration.map(Format.minutes) ?? Format.minutes(Int(model.timers.defaultMinutes))) (right-click for others)")
-                    .contextMenu { TimerMenu(model: model, task: task) }
-                    .padding(.top, 1)
-                    .transition(.opacity)
             }
         }
         .padding(.vertical, 7)
@@ -122,7 +116,7 @@ struct TaskRow: View {
             let color = late ? Theme.late.opacity(0.75) : (task.due == today ? Theme.ink : Theme.secondary)
             parts.append(Text(when).foregroundColor(color))
         }
-        if model.isInProgress(task), group.sectionId != task.sectionId {
+        if model.isInProgress(task), group.sectionId != task.sectionId, model.place != .inProgress {
             parts.insert(Text(Image(systemName: "circle.lefthalf.filled")).foregroundColor(Theme.accent) + Text(" in progress").foregroundColor(Theme.accent), at: 0)
         }
         if let project = model.snap.list(task.listId)?.project(task.project), group.projectId != project.id {
@@ -218,10 +212,16 @@ struct TaskMenu: View {
         Button("no date") { model.setDue(nil, for: ids) }
         Divider()
         if let one {
-            Button(model.isInProgress(one) ? "back to to-do" : "in progress (swipe right)") { model.toggleInProgress(one.id) }
+            Button(model.isInProgress(one) ? "not in progress" : "in progress") { model.toggleInProgress(one.id) }
         }
         Button(tasks.allSatisfy(\.pinned) ? "unpin" : "pin to the top") { model.togglePin(ids) }
-        Button(tasks.allSatisfy(\.someday) ? "back from ideas" : "to ideas (put off)") { model.toggleSomeday(ids) }
+        Button(tasks.allSatisfy(\.someday) ? "out of ideas" : "to ideas") { model.toggleSomeday(ids) }
+        if let one, !one.done {
+            Button(one.subtasks.isEmpty ? "add a sublist" : "add to its sublist") {
+                model.selection = [one.id]
+                withAnimation(.snappy(duration: 0.2)) { model.addingSublist = one.id }
+            }
+        }
         if let one, !one.subtasks.isEmpty, !one.isIdea {
             Button("turn into a project") { model.makeProject(from: one.id) }
         }
@@ -302,13 +302,20 @@ struct Sublist: View {
             if adding {
                 HStack(spacing: 8) {
                     Image(systemName: "plus").font(.system(size: 9)).foregroundStyle(Theme.faint).frame(width: 13)
-                    PlainField(text: $text, placeholder: "add", font: Theme.nsFont(15), onSubmit: add,
-                               onEscape: { text = ""; model.focusList += 1 })
+                    PlainField(text: $text, placeholder: "add", font: Theme.nsFont(15), focus: 1, onSubmit: add,
+                               onEscape: { close() },
+                               onEnd: { if text.trimmingCharacters(in: .whitespaces).isEmpty { close() } })
                         .frame(height: 19)
                 }
             }
         }
         .animation(.snappy(duration: 0.22), value: task.subtasks.map(\.id))
+    }
+
+    private func close() {
+        text = ""
+        withAnimation(.snappy(duration: 0.2)) { if model.addingSublist == task.id { model.addingSublist = nil } }
+        model.focusList += 1
     }
 
     private func add() {
@@ -341,19 +348,19 @@ struct Sublist: View {
 struct SwipeBehind: View {
     let offset: CGFloat
     let inProgress: Bool
-    /// A timer's going on it: swiping left stops that first, and deletes only further on.
+    /// A timer's going on it: a soft left swipe stops it (rather than starting one).
     var timed = false
 
     var body: some View {
-        let timing = offset >= AppModel.swipeTimerReach
-        let stopping = timed && -offset < AppModel.swipeDeleteFarReach
-        let reached = offset > 0 ? offset >= AppModel.swipeReach
-            : stopping ? -offset >= AppModel.swipeStopReach : -offset >= (timed ? AppModel.swipeDeleteFarReach : AppModel.swipeDeleteReach)
+        let hard = abs(offset) >= AppModel.swipeHardReach
+        let timing = offset > 0 && hard
+        let soft = offset < 0 && !hard
+        let reached = abs(offset) >= AppModel.swipeReach
         ZStack {
             if offset > 0 {
                 HStack(spacing: 6) {
-                    Image(systemName: timing ? "timer" : inProgress ? "arrow.uturn.backward" : "circle.lefthalf.filled")
-                    Text(timing ? "in progress + timer" : inProgress ? "back to to-do" : "in progress").font(Theme.font(14))
+                    Image(systemName: timing ? "timer" : inProgress ? "circle" : "circle.lefthalf.filled")
+                    Text(timing ? "in progress + timer" : inProgress ? "not in progress" : "in progress").font(Theme.font(14))
                 }
                 .foregroundStyle(.white)
                 .padding(.leading, 18)
@@ -361,18 +368,17 @@ struct SwipeBehind: View {
                 .background(RoundedRectangle(cornerRadius: 7).fill(timing ? Theme.ink.opacity(0.8) : Theme.accent.opacity(reached ? 1 : 0.6)))
             } else if offset < 0 {
                 HStack(spacing: 6) {
-                    Text(stopping ? "stop timer" : "delete").font(Theme.font(14))
-                    Image(systemName: stopping ? "stop.circle" : "trash")
+                    Text(soft ? (timed ? "stop timer" : "timer") : "delete").font(Theme.font(14))
+                    Image(systemName: soft ? (timed ? "stop.circle" : "timer") : "trash")
                 }
                 .foregroundStyle(.white)
                 .padding(.trailing, 18)
                 .frame(maxWidth: .infinity, alignment: .trailing)
-                .background(RoundedRectangle(cornerRadius: 7).fill(stopping ? Theme.secondary.opacity(reached ? 1 : 0.6) : Theme.late.opacity(reached ? 0.95 : 0.6)))
+                .background(RoundedRectangle(cornerRadius: 7).fill(soft ? (timed ? Theme.secondary : Theme.accent).opacity(reached ? 1 : 0.6) : Theme.late.opacity(0.95)))
             }
         }
         .animation(.easeOut(duration: 0.12), value: reached)
-        .animation(.easeOut(duration: 0.12), value: timing)
-        .animation(.easeOut(duration: 0.12), value: stopping)
+        .animation(.easeOut(duration: 0.12), value: hard)
     }
 }
 

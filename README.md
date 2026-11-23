@@ -18,7 +18,9 @@ open behind what you're doing (in front only if you were using toyl), never taki
 
 ## What's in it
 
-- 🗂 **places**: all · inbox · today · ideas · timers, then your lists (in groups), tags, saved filters. ⌘1–5. it opens on all.
+- 🗂 **places**: all · inbox · today · in progress · ideas · timers, then your lists (in groups), tags, saved filters. ⌘1–6. it opens on all.
+  - **in progress**: everything you've swiped into progress, the ones with a timer going first
+  - what you just did ("deleted", "timer stopped") shows at the top right for a moment, then fades
 - 📅 **calendar panel** (the calendar button): google calendar beside your list, as a **day, week or month**.
   - day: the week on top · all-day events · the hours, with your timed tasks dashed among the events
   - week: seven days of hours side by side; "n more" over a day opens the all-day row · month: each day's events and tasks; click a day to open it
@@ -32,24 +34,22 @@ open behind what you're doing (in front only if you were using toyl), never taki
   - drag a panel's grip (≡, at its top) onto another to swap them · right-click the grip to move it left or right
   - drag the line between panels to resize them · double-click it for the usual width
 - 👆 **swipe a task** (two fingers on the trackpad, as in Mail; or a finger on the phone). it pulls freely, then harder and harder, like a rubber band
-  - right: into its list's **in progress** (again to take it back out)
-  - right, much further: in progress, with a timer going on it
-  - left, on a task with a timer going: stop the timer; further still: delete
-  - left, on any other task, a good way (so it's never by accident): delete (⌘z puts it back)
+  - soft right: into its list's **in progress** (or out of it) · hard right: in progress, with a timer going
+  - soft left: a **timer** on it (or, if one's going, stop it) · hard left: delete (⌘z undoes it)
 - ✉️ **important email**: gmail and outlook, pulled into the inbox and flagged ✉ email. below.
 - 📁 **projects** inside a list: the big pieces of work (a final project, midterm prep, an event)
   - a list shows its loose tasks first, then each project under a big heading, with a + to add straight into it
   - make one: "new project" at the bottom of a list, the list's menu, or a task's project in its description
   - drop a task on a project's heading to put it in; double-click the heading to rename it; right-click to delete it (its tasks stay)
   - a task with a sublist can **turn into a project**: right-click › turn into a project (or "make it a project" by its sublist). each item becomes a task in it
-- ☑️ **sublists**: a task's sublist shows right under it. select the task to add to it · ✨ "break it down" makes one with apple intelligence.
+- ☑️ **sublists**: a task's sublist shows right under it. right-click › add to its sublist (or use its description) to add · ✨ "break it down" makes one with apple intelligence.
 - 💡 **ideas**: loose ideas (`?` first) and anything put off (`/idea`, or drag it onto ideas). it keeps its list.
 - ⌨️ **quick add** reads what you type: `essay draft fri 5pm #cs ~2h !`
   - `#cs` list or tag · `~list` a list · `?` an idea
   - `fri 5pm`, `tomorrow`, `nov 30`, `by fri`, `next week` when it's due
   - `every week` repeats · `~30m` its timer's length · `!` pin · ` // ` notes
   - `/timer`, `/timer 30m`, `/stopwatch` start a timer on it
-- ⏱ **timers on any task** (a running one shows on its task, and in timers; nothing at the window's foot): hover a task and click ⏱ (right-click it for lengths), or pick one in its details: 10m · 30m · 1h · 6h · 24h, or type one. time adds up on the task.
+- ⏱ **timers on any task** (a running one shows on its task, and in timers; nothing at the window's foot): swipe it softly left, right-click › timer for a length, or pick one in its details: 10m · 30m · 1h · 6h · 24h, or type one. time adds up on the task.
 - 🔗 **links in notes are cards** in the details: the page's icon and title; click to open. rows stay plain.
 - ➕ **every list has its heading in all**, empty or not, with a + on the right to add straight into it.
 - 🪄 **autosort**: files new tasks where your others go (on the mac); ⌥⌘A does the inbox.
@@ -123,7 +123,7 @@ In Google Cloud, also turn on the Gmail API for the same project.
 toyl reads your Canvas (canvas.stanford.edu, or another school's) and brings in what's due, to get ready for:
 - 📚 each assignment, quiz and graded discussion becomes a task, due when Canvas says, in the list named like
   its course ("CS 106B" goes to 💻 cs 106b; else the inbox), with its Canvas page linked in the description
-- ✅ submitted on Canvas: checked off here · its due date moved there: moved here · deleted here: it stays gone
+- ✅ submitted on Canvas: checked off here · its due date moved there: moved here · deleted here: not brought in again
 - every half hour while toyl's open; `toyl canvas pull` (or the `pull_canvas` tool) checks now; `is:canvas` finds them
 
 **Connecting it, once** (settings › canvas):
@@ -139,8 +139,8 @@ toyl on your phone is made for adding tasks and running timers, served by toyl o
 - ➕ a big "new task" field first, read the way quick add reads it (`fri 5pm`, `#cs`, `/timer 30m`), with your lists to file into
 - ⏱ big buttons for 10m · 30m · 1h · 6h · 24h and a stopwatch, on anything or on a task; what's running, to pause, +5 or stop
 - 🗂 your lists and their tasks (tap a list to fold it), to check off or time
-  - swipe right: in progress · much further right: in progress with a timer
-  - swipe left: stop its timer if one's going, further: delete (with undo)
+  - soft right: in progress · hard right: in progress with a timer
+  - soft left: a timer (or stop it) · hard left: delete (with undo)
 - ✉️ added while the Mac can't be reached: kept on the phone, sent when it can
 
 **Setting it up, once:**

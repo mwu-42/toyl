@@ -17,13 +17,37 @@ struct MainPane: View {
                 if let note = model.calendar.note { Notice(text: note, tint: Theme.secondary) { model.calendar.note = nil } }
                 if let said = model.mail.said { Notice(text: said, tint: Theme.secondary) { model.mail.said = nil } }
                 if let said = model.canvas.said { Notice(text: said, tint: Theme.secondary) { model.canvas.said = nil } }
-                if let banner = model.banner { Notice(text: banner, tint: Theme.secondary) { model.banner = nil } }
                 if model.showAutosort { AutosortPanel(model: model) }
                 TaskListView(model: model)
             }
 
         }
         .background(Theme.paper)
+        .overlay(alignment: .topTrailing) {
+            if let banner = model.banner {
+                ActionNote(text: banner)
+                    .padding(.top, 80)
+                    .padding(.trailing, 24)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .onTapGesture { withAnimation(.easeOut(duration: 0.3)) { model.banner = nil } }
+            }
+        }
+        .animation(.easeOut(duration: 0.25), value: model.banner)
+    }
+}
+
+/// The last thing done, in a few words, for a moment (top right, under the title).
+struct ActionNote: View {
+    let text: String
+    var body: some View {
+        Text(text)
+            .font(Theme.font(13.5))
+            .foregroundStyle(Theme.secondary)
+            .lineLimit(2)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(Theme.field))
+            .frame(maxWidth: 320, alignment: .trailing)
     }
 }
 
@@ -433,7 +457,7 @@ struct LateMenu: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("move everything late at once (⌘z puts it back)")
+        .help("move everything late at once")
     }
 }
 
@@ -494,6 +518,7 @@ struct EmptyPlace: View {
         case .upcoming: return "nothing ahead"
         case .logbook: return "nothing done yet"
         case .ideas: return "no ideas yet"
+        case .inProgress: return "nothing in progress · swipe a task right"
         default: return "nothing here"
         }
     }
@@ -504,6 +529,7 @@ struct EmptyPlace: View {
         case .inbox: return "tray"
         case .today: return "sun.max"
         case .ideas: return "lightbulb"
+        case .inProgress: return "circle.lefthalf.filled"
         default: return "circle.dashed"
         }
     }

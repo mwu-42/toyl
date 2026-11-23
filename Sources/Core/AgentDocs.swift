@@ -59,7 +59,8 @@ enum AgentDocs {
         yearly: checking a repeating task off adds the next one. **Duration** (minutes) only sets its timer and calendar length; the window doesn't show it. \
         **Spent** is seconds timed on it. A task's **sublist** (`subtasks` in the file) shows under it in the list: \
         call it a sublist, not steps.
-        - **Today** shows what's due today or before, plus pinned tasks. **All** (`anytime` in the file and commands) is everything open, and where the window opens. \
+        - **Today** shows what's due today or before, plus pinned tasks. **All** (`anytime` in the file and commands) is everything open, and where the window opens. **In progress** \
+        (`progress`) is everything in its list's "in progress" section, the ones with a timer going first. \
         **Ideas** holds loose ideas and anything put off. (Agents can also ask for upcoming, dated later, and logbook, done.)
         - Text is shown in lower case, but keep the case the person typed. Don't capitalize their words.
 

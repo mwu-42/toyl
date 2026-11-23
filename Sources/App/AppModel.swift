@@ -84,13 +84,25 @@ final class AppModel: ObservableObject {
     @Published private var groupings: [String: String]
     /// Steps the on-device model is coming up with, for the task with this id.
     @Published var thinking: String?
-    @Published var banner: String?
+    /// The last thing done, said at the top right for a moment, then faded out.
+    @Published var banner: String? {
+        didSet {
+            fadeBanner?.cancel()
+            guard banner != nil else { return }
+            let fade = DispatchWorkItem { [weak self] in withAnimation(.easeOut(duration: 0.6)) { self?.banner = nil } }
+            fadeBanner = fade
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.5, execute: fade)
+        }
+    }
+    private var fadeBanner: DispatchWorkItem?
     /// Autosort's suggestions for the inbox, showing.
     @Published var showAutosort = false
     /// Something being put on Google Calendar.
     @Published var calendarForm: EventForm?
     /// The heading whose + was clicked: a line under it to add a task straight there.
     @Published var addingTo: String?
+    /// The task whose sublist is being added to, in its row (asked for: it isn't shown otherwise).
+    @Published var addingSublist: String?
     /// The task the pointer's over (for swiping it), and the swipe going on, if one is.
     var hoveredTask: String?
     @Published var swipe: Swipe?
@@ -103,15 +115,11 @@ final class AppModel: ObservableObject {
         var offset: CGFloat
     }
 
-    /// How far a swipe goes before it does something.
-    /// - right a little: in progress; right a long way: in progress with a timer going
-    /// - left, with a timer going: stop the timer; a long way further: delete
-    /// - left, with none: delete (a good way, so it's not done by accident)
-    static let swipeReach: CGFloat = 70
-    static let swipeTimerReach: CGFloat = 280
-    static let swipeStopReach: CGFloat = 120
-    static let swipeDeleteReach: CGFloat = 170
-    static let swipeDeleteFarReach: CGFloat = 280
+    /// How far a swipe goes before it does something: a soft swipe, then a hard one.
+    /// - right, soft: in progress (or out of it) · hard: in progress with a timer going
+    /// - left, soft: a timer on it (or its timer stopped) · hard: delete
+    static let swipeReach: CGFloat = 110
+    static let swipeHardReach: CGFloat = 240
 
     /// A rubber band, as iOS pulls: free for the first `free` points, then harder and harder,
     /// never past `free + give`.
@@ -215,6 +223,7 @@ final class AppModel: ObservableObject {
         case .logbook: return "logbook"
         case .ideas: return "ideas"
         case .timers: return "timers"
+        case .inProgress: return "in progress"
         case .search: return "everything"
         case .list(let id): return snap.list(id).map { display($0.displayName) } ?? "list"
         case .tag(let tag): return "#" + tag
@@ -231,6 +240,7 @@ final class AppModel: ObservableObject {
         case .logbook: return "checkmark.circle"
         case .ideas: return "lightbulb"
         case .timers: return "timer"
+        case .inProgress: return "circle.lefthalf.filled"
         case .search: return "magnifyingglass"
         case .list: return "circle.fill"
         case .tag: return "number"
@@ -290,6 +300,8 @@ final class AppModel: ObservableObject {
             anchor = id
             editing = nil
         }
+        // Added on the in progress page: in progress.
+        if place == .inProgress, snap.task(id) != nil { toggleInProgress(id) }
         // "/timer" in it: a timer on it straight away.
         if let ask = q.timer, let task = snap.task(id) {
             timers.start(task: task, minutes: ask.minutes.map(Double.init), stopwatch: ask.stopwatch)
@@ -468,7 +480,7 @@ final class AppModel: ObservableObject {
         let ids = ids ?? targets
         let put = !ids.compactMap { snap.task($0) }.allSatisfy(\.someday)
         withAnimation(.easeInOut(duration: 0.22)) {
-            store.update(ids, put ? "to ideas" : "back from ideas") { _ in var p = TaskPatch(); p.someday = put; return p }
+            store.update(ids, put ? "to ideas" : "out of ideas") { _ in var p = TaskPatch(); p.someday = put; return p }
         }
     }
 
@@ -567,7 +579,7 @@ final class AppModel: ObservableObject {
             setGroup(.project, for: place)
             selection = []
         }
-        banner = "“\(task.title)” is a project now · ⌘z puts it back"
+        banner = "“\(task.title)” is a project now"
     }
 
     func renameProject(_ id: String, in list: String, to name: String) {
@@ -825,19 +837,22 @@ final class AppModel: ObservableObject {
             let offset = swipe?.offset ?? track.dx
             withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { swipe = nil }
             let running = timers.timer(for: track.id)
-            if offset >= Self.swipeTimerReach {
+            if offset >= Self.swipeHardReach {
                 startInProgress(track.id)
             } else if offset >= Self.swipeReach {
                 toggleInProgress(track.id)
-            } else if let running, offset > -Self.swipeDeleteFarReach {
-                if offset <= -Self.swipeStopReach {
-                    withAnimation(.snappy(duration: 0.2)) { timers.stop(running.id) }
-                    banner = "timer stopped"
+            } else if offset > -Self.swipeHardReach {
+                if offset <= -Self.swipeReach {
+                    if let running {
+                        withAnimation(.snappy(duration: 0.2)) { timers.stop(running.id) }
+                    } else if let task = snap.task(track.id), !task.done {
+                        timer(task)
+                    }
                 }
-            } else if offset <= -(running == nil ? Self.swipeDeleteReach : Self.swipeDeleteFarReach) {
+            } else {
                 withAnimation(.easeInOut(duration: 0.22)) { store.delete([track.id]) }
                 selection.remove(track.id)
-                banner = "deleted · ⌘z puts it back"
+                banner = "deleted"
             }
             return true
         }

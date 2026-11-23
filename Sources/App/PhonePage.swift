@@ -67,18 +67,17 @@ enum PhonePage {
     li.task.going { opacity: 0; }
     li.task .front { display: flex; align-items: flex-start; gap: 12px; padding: 11px 2px; background: var(--paper); position: relative; transition: transform 0.22s; }
     li.task .behind { position: absolute; inset: 0; display: none; align-items: center; padding: 0 18px; color: white; font-size: 17px; }
+    li.task .behind span { display: none; }
     li.task.right .behind { display: flex; justify-content: flex-start; background: rgba(151, 141, 121, 0.6); }
-    li.task.left .behind { display: flex; justify-content: flex-end; background: rgba(168, 90, 80, 0.6); }
-    li.task.right.reached .behind { background: var(--accent); }
-    li.task.left.reached .behind { background: var(--late); }
-    li.task.right .behind .del, li.task.left .behind .prog, li.task .behind .timing-label, li.task .behind .stop-label { display: none; }
-    li.task.left.stopping .behind { background: rgba(115, 115, 112, 0.6); }
-    li.task.left.stopping.reached .behind { background: var(--secondary); }
-    li.task.left.stopping .behind .del { display: none; }
-    li.task.left.stopping .behind .stop-label { display: inline; }
-    li.task.right.timing .behind { background: rgba(29, 29, 28, 0.8); }
-    li.task.right.timing .behind .prog { display: none; }
-    li.task.right.timing .behind .timing-label { display: inline; }
+    li.task.left .behind { display: flex; justify-content: flex-end; background: rgba(151, 141, 121, 0.6); }
+    li.task.reached .behind { background: var(--accent); }
+    li.task.right.hard .behind { background: rgba(29, 29, 28, 0.85); }
+    li.task.left.hard .behind { background: var(--late); }
+    li.task.left.stops .behind { background: rgba(115, 115, 112, 0.6); }
+    li.task.left.stops.reached .behind { background: var(--secondary); }
+    li.task.left.stops.hard .behind { background: var(--late); }
+    li.task.right:not(.hard) .behind .prog, li.task.right.hard .behind .timing-label { display: inline; }
+    li.task.left:not(.hard):not(.stops) .behind .timer-label, li.task.left.stops:not(.hard) .behind .stop-label, li.task.left.hard .behind .del { display: inline; }
     .circle { flex: none; width: 24px; height: 24px; margin-top: 1px; border-radius: 50%; border: 1.4px solid var(--faint); background: transparent; padding: 0; position: relative; transition: transform 0.2s; }
     .circle.done { background: var(--accent); border-color: var(--accent); transform: scale(1.08); }
     .circle.done::after { content: ""; position: absolute; left: 7.5px; top: 3.5px; width: 6px; height: 11px; border: solid white; border-width: 0 2.2px 2.2px 0; transform: rotate(45deg); }
@@ -129,7 +128,7 @@ enum PhonePage {
       <div id="presets" class="presets"></div>
       <label class="on-what">on <input id="label" placeholder="anything" autocapitalize="none"></label>
       <div id="groups"></div>
-      <p class="swipe-hint">swipe right: in progress · swipe left: delete</p>
+      <p class="swipe-hint">swipe right: in progress · left: timer · further: more</p>
       <p id="hint" hidden>share › add to home screen <button id="hintClose" aria-label="close">×</button></p>
     </main>
     <main id="pair" hidden>
@@ -261,7 +260,7 @@ enum PhonePage {
         const done = await api("/api/do", body);
         show(done.state);
         const added = done.added;
-        say(done.said || "added", added ? async () => { try { show((await api("/api/do", { do: "remove", id: added.id })).state); say("taken back"); } catch (e) {} } : null);
+        say(done.said || "added", added ? async () => { try { show((await api("/api/do", { do: "remove", id: added.id })).state); say("removed"); } catch (e) {} } : null);
       } catch (error) {
         if (error.unpaired) return;
         if (error.said) return say(error.message);
@@ -419,8 +418,8 @@ enum PhonePage {
     function taskRow(task) {
       const row = el("li", "task");
       const behind = el("div", "behind");
-      behind.append(el("span", "prog", task.progress ? "back to to-do" : "in progress"), el("span", "timing-label", "in progress + timer"),
-                    el("span", "stop-label", "stop timer"), el("span", "del", "delete"));
+      behind.append(el("span", "prog", task.progress ? "not in progress" : "in progress"), el("span", "timing-label", "in progress + timer"),
+                    el("span", "timer-label", "timer"), el("span", "stop-label", "stop timer"), el("span", "del", "delete"));
       const front = el("div", "front");
       const circle = el("button", "circle");
       circle.setAttribute("aria-label", "check off");
@@ -436,29 +435,17 @@ enum PhonePage {
       if (task.sublist) parts.push(document.createTextNode(`${task.sublist} in its sublist`));
       parts.forEach((part, index) => { if (index) meta.append(document.createTextNode("  ·  ")); meta.append(part); });
       if (parts.length) body.append(meta);
-      if (timerFor === task.id) {
-        const lengths = el("div", "timers");
-        for (const minutes of state.presets) {
-          const button = el("button", "preset small", length(minutes));
-          button.addEventListener("click", () => startTimer({ minutes }, task.id));
-          lengths.append(button);
-        }
-        const watch = el("button", "preset small", "stopwatch");
-        watch.addEventListener("click", () => startTimer({ stopwatch: true }, task.id));
-        lengths.append(watch);
-        body.append(lengths);
-      }
-      const time = el("button", "clock" + (task.timer ? " running" : ""), task.timer ? "timing" : "timer");
-      time.addEventListener("click", () => { timerFor = timerFor === task.id ? null : task.id; drawGroups(); });
-      front.append(circle, body, time);
+      if (task.timer) meta.prepend(el("span", "progress", "◷ timing" + (parts.length ? "  ·  " : "")));
+      if (task.timer && !parts.length) body.append(meta);
+      front.append(circle, body);
       row.append(behind, front);
       swipeable(row, front, task);
       return row;
     }
 
     // A rubber band: free at first, then harder and harder to pull, never past 360 points.
-    // Right 80: in progress; right 280: in progress with a timer. Left, with a timer going: 120 stops
-    // it, 280 deletes; with none, 170 deletes.
+    // Soft (110): right, in progress; left, a timer (or its timer stopped).
+    // Hard (240): right, in progress with a timer; left, delete.
     function rubber(x) {
       const size = Math.abs(x), free = 200, give = 160;
       if (size <= free) return x;
@@ -487,29 +474,28 @@ enum PhonePage {
         front.style.transform = `translateX(${dx}px)`;
         row.classList.toggle("right", dx > 0);
         row.classList.toggle("left", dx < 0);
-        const stopping = task.timer && dx > -280;
-        row.classList.toggle("stopping", dx < 0 && stopping);
-        row.classList.toggle("reached", dx >= 80 || (stopping ? dx <= -120 : dx <= (task.timer ? -280 : -170)));
-        row.classList.toggle("timing", dx >= 280);
+        row.classList.toggle("stops", dx < 0 && !!task.timer);
+        row.classList.toggle("reached", Math.abs(dx) >= 110);
+        row.classList.toggle("hard", Math.abs(dx) >= 240);
       }, { passive: false });
       const finish = () => {
         front.style.transition = "transform 0.22s";
-        if (sideways && dx >= 280) {
+        if (sideways && dx >= 240) {
           front.style.transform = "";
           progress(task, true);
-        } else if (sideways && dx >= 80) {
+        } else if (sideways && dx >= 110) {
           front.style.transform = "";
           progress(task, false);
-        } else if (sideways && task.timer && dx > -280) {
-          front.style.transform = "";
-          if (dx <= -120) act({ do: "stoptimer", id: task.id });
-        } else if (sideways && dx <= (task.timer ? -280 : -170)) {
+        } else if (sideways && dx <= -240) {
           front.style.transform = "translateX(-110%)";
           remove(task, row, front);
+        } else if (sideways && dx <= -110) {
+          front.style.transform = "";
+          act(task.timer ? { do: "stoptimer", id: task.id } : { do: "timer", id: task.id });
         } else {
           front.style.transform = "";
         }
-        setTimeout(() => row.classList.remove("left", "right", "reached", "timing", "stopping"), 230);
+        setTimeout(() => row.classList.remove("left", "right", "reached", "hard", "stops"), 230);
         touching = false;
         if (stale) { stale = false; setTimeout(drawGroups, 260); }
       };
@@ -530,7 +516,7 @@ enum PhonePage {
       try {
         const done = await api("/api/do", { do: "delete", id: task.id });
         setTimeout(() => show(done.state), 240);
-        say("deleted", async () => { try { show((await api("/api/do", { do: "restore" })).state); say("put back"); } catch (e) {} });
+        say("deleted", async () => { try { show((await api("/api/do", { do: "restore" })).state); say("restored"); } catch (e) {} });
       } catch (error) {
         row.classList.remove("going");
         front.style.transform = "";

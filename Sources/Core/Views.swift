@@ -51,6 +51,8 @@ struct Snapshot {
 enum Place: Hashable {
     /// (Upcoming and logbook aren't in the window's sidebar; the command line and agents still ask for them.)
     case inbox, today, upcoming, anytime, logbook, ideas, timers
+    /// Everything in its list's "in progress" section, the ones with a timer going first.
+    case inProgress
     case list(String), tag(String), filter(String), search
 
     var key: String {
@@ -62,6 +64,7 @@ enum Place: Hashable {
         case .logbook: return "logbook"
         case .ideas: return "ideas"
         case .timers: return "timers"
+        case .inProgress: return "progress"
         case .list(let id): return "list:" + id
         case .tag(let tag): return "tag:" + tag.lowercased()
         case .filter(let id): return "filter:" + id
@@ -78,6 +81,7 @@ enum Place: Hashable {
         case "logbook", "done": self = .logbook
         case "ideas", "idea", "someday": self = .ideas
         case "timers": self = .timers
+        case "progress", "in-progress", "inprogress", "doing": self = .inProgress
         default:
             if key.hasPrefix("list:") { self = .list(String(key.dropFirst(5))) }
             else if key.hasPrefix("tag:") { self = .tag(String(key.dropFirst(4))) }
@@ -88,7 +92,7 @@ enum Place: Hashable {
 
     /// The sidebar's: then ideas and timers.
     /// "all" (`anytime` inside) first: it's where the window opens.
-    static let smart: [Place] = [.anytime, .inbox, .today]
+    static let smart: [Place] = [.anytime, .inbox, .today, .inProgress]
 }
 
 enum SortMode: String, CaseIterable, Identifiable {
@@ -154,7 +158,7 @@ enum Views {
         case .inbox, .list: return .project
         case .upcoming: return .day
         case .anytime, .ideas, .tag, .filter, .search: return .list
-        case .today, .logbook, .timers: return .none
+        case .today, .logbook, .timers, .inProgress: return .none
         }
     }
 
@@ -178,6 +182,10 @@ enum Views {
             base = snap.tasks.filter { ($0.isIdea || $0.someday) && (showDone || !$0.done) }
         case .timers:
             base = []
+        case .inProgress:
+            base = snap.tasks.filter { task in
+                (showDone || !task.done) && snap.list(task.listId)?.sections.first { $0.id == task.sectionId }?.name.lowercased() == "in progress"
+            }
         case .list(let id):
             base = snap.tasks.filter { $0.listId == id && (showDone || !$0.done) }
         case .tag(let tag):
@@ -261,6 +269,12 @@ enum Views {
     static func groups(_ tasks: [TaskModel], place: Place, mode: GroupMode, sort: SortMode, snap: Snapshot, now: Date = Date(),
                        keepEmpty: Bool = false) -> [TaskGroup] {
         let today = Day.today(now)
+        if place == .inProgress, mode == .none {
+            // The ones with a timer going first, then the rest, each as the sort says.
+            let sortedAll = sorted(tasks, by: sort, now: now)
+            let timed = snap.timedTasks
+            return [TaskGroup(id: "progress", tasks: sortedAll.filter { timed.contains($0.id) } + sortedAll.filter { !timed.contains($0.id) })]
+        }
         if place == .today {
             let sorted = Self.sorted(tasks, by: sort, now: now)
             let late = sorted.filter { !$0.done && ($0.isLate(at: now) && $0.due != today || $0.hasSlipped(at: now)) }

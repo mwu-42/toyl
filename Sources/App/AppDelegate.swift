@@ -261,7 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc func openFolder() { model.reveal(Paths.data) }
 
     @objc func go(_ sender: NSMenuItem) {
-        let places: [Place] = [.anytime, .inbox, .today, .ideas, .timers]
+        let places: [Place] = [.anytime, .inbox, .today, .inProgress, .ideas, .timers]
         guard places.indices.contains(sender.tag) else { return }
         showMain()
         model.place = places[sender.tag]
@@ -360,7 +360,7 @@ enum Menus {
             .separator(),
             item("delete", #selector(AppDelegate.deleteTasks), "\u{8}", target: app),
         ]))
-        let places = ["all", "inbox", "today", "ideas", "timers"]
+        let places = ["all", "inbox", "today", "in progress", "ideas", "timers"]
         main.addItem(submenu("view", places.enumerated().map { index, name in
             let made = item(name, #selector(AppDelegate.go(_:)), "\(index + 1)", target: app)
             made.tag = index

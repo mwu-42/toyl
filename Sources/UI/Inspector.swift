@@ -384,7 +384,7 @@ struct TaskDetail: View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 16) {
                 Quiet(label: task.pinned ? "unpin" : "pin", symbol: task.pinned ? "pin.slash" : "pin") { model.togglePin([task.id]) }
-                Quiet(label: task.someday ? "back from ideas" : "to ideas", symbol: "lightbulb") { model.toggleSomeday([task.id]) }
+                Quiet(label: task.someday ? "out of ideas" : "to ideas", symbol: "lightbulb") { model.toggleSomeday([task.id]) }
                 Spacer()
                 Quiet(label: "delete", symbol: "trash", tint: Theme.late) {
                     model.selection = [task.id]
