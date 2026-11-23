@@ -71,7 +71,11 @@ enum PhonePage {
     li.task.left .behind { display: flex; justify-content: flex-end; background: rgba(168, 90, 80, 0.6); }
     li.task.right.reached .behind { background: var(--accent); }
     li.task.left.reached .behind { background: var(--late); }
-    li.task.right .behind .del, li.task.left .behind .prog, li.task .behind .timing-label { display: none; }
+    li.task.right .behind .del, li.task.left .behind .prog, li.task .behind .timing-label, li.task .behind .stop-label { display: none; }
+    li.task.left.stopping .behind { background: rgba(115, 115, 112, 0.6); }
+    li.task.left.stopping.reached .behind { background: var(--secondary); }
+    li.task.left.stopping .behind .del { display: none; }
+    li.task.left.stopping .behind .stop-label { display: inline; }
     li.task.right.timing .behind { background: rgba(29, 29, 28, 0.8); }
     li.task.right.timing .behind .prog { display: none; }
     li.task.right.timing .behind .timing-label { display: inline; }
@@ -415,7 +419,8 @@ enum PhonePage {
     function taskRow(task) {
       const row = el("li", "task");
       const behind = el("div", "behind");
-      behind.append(el("span", "prog", task.progress ? "back to to-do" : "in progress"), el("span", "timing-label", "in progress + timer"), el("span", "del", "delete"));
+      behind.append(el("span", "prog", task.progress ? "back to to-do" : "in progress"), el("span", "timing-label", "in progress + timer"),
+                    el("span", "stop-label", "stop timer"), el("span", "del", "delete"));
       const front = el("div", "front");
       const circle = el("button", "circle");
       circle.setAttribute("aria-label", "check off");
@@ -451,10 +456,11 @@ enum PhonePage {
       return row;
     }
 
-    // A rubber band: free at first, then harder and harder to pull, never past 260 points.
-    // Right 80: in progress; right 190: in progress with a timer; left 170: delete.
+    // A rubber band: free at first, then harder and harder to pull, never past 360 points.
+    // Right 80: in progress; right 280: in progress with a timer. Left, with a timer going: 120 stops
+    // it, 280 deletes; with none, 170 deletes.
     function rubber(x) {
-      const size = Math.abs(x), free = 150, give = 110;
+      const size = Math.abs(x), free = 200, give = 160;
       if (size <= free) return x;
       const pulled = free + (1 - 1 / ((size - free) * 0.55 / give + 1)) * give;
       return x < 0 ? -pulled : pulled;
@@ -481,24 +487,29 @@ enum PhonePage {
         front.style.transform = `translateX(${dx}px)`;
         row.classList.toggle("right", dx > 0);
         row.classList.toggle("left", dx < 0);
-        row.classList.toggle("reached", dx >= 80 || dx <= -170);
-        row.classList.toggle("timing", dx >= 190);
+        const stopping = task.timer && dx > -280;
+        row.classList.toggle("stopping", dx < 0 && stopping);
+        row.classList.toggle("reached", dx >= 80 || (stopping ? dx <= -120 : dx <= (task.timer ? -280 : -170)));
+        row.classList.toggle("timing", dx >= 280);
       }, { passive: false });
       const finish = () => {
         front.style.transition = "transform 0.22s";
-        if (sideways && dx >= 190) {
+        if (sideways && dx >= 280) {
           front.style.transform = "";
           progress(task, true);
         } else if (sideways && dx >= 80) {
           front.style.transform = "";
           progress(task, false);
-        } else if (sideways && dx <= -170) {
+        } else if (sideways && task.timer && dx > -280) {
+          front.style.transform = "";
+          if (dx <= -120) act({ do: "stoptimer", id: task.id });
+        } else if (sideways && dx <= (task.timer ? -280 : -170)) {
           front.style.transform = "translateX(-110%)";
           remove(task, row, front);
         } else {
           front.style.transform = "";
         }
-        setTimeout(() => row.classList.remove("left", "right", "reached", "timing"), 230);
+        setTimeout(() => row.classList.remove("left", "right", "reached", "timing", "stopping"), 230);
         touching = false;
         if (stale) { stale = false; setTimeout(drawGroups, 260); }
       };

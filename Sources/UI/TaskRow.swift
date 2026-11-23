@@ -64,7 +64,7 @@ struct TaskRow: View {
         }
         .background(Theme.paper.opacity(model.swipe?.id == task.id ? 1 : 0))
         .offset(x: model.swipe?.id == task.id ? model.swipe!.offset : 0)
-        .background { SwipeBehind(offset: model.swipe?.id == task.id ? model.swipe!.offset : 0, inProgress: model.isInProgress(task)) }
+        .background { SwipeBehind(offset: model.swipe?.id == task.id ? model.swipe!.offset : 0, inProgress: model.isInProgress(task), timed: timer != nil) }
         .contentShape(Rectangle())
         .onHover { inside in
             hovering = inside
@@ -341,10 +341,14 @@ struct Sublist: View {
 struct SwipeBehind: View {
     let offset: CGFloat
     let inProgress: Bool
+    /// A timer's going on it: swiping left stops that first, and deletes only further on.
+    var timed = false
 
     var body: some View {
         let timing = offset >= AppModel.swipeTimerReach
-        let reached = offset > 0 ? offset >= AppModel.swipeReach : -offset >= AppModel.swipeDeleteReach
+        let stopping = timed && -offset < AppModel.swipeDeleteFarReach
+        let reached = offset > 0 ? offset >= AppModel.swipeReach
+            : stopping ? -offset >= AppModel.swipeStopReach : -offset >= (timed ? AppModel.swipeDeleteFarReach : AppModel.swipeDeleteReach)
         ZStack {
             if offset > 0 {
                 HStack(spacing: 6) {
@@ -357,17 +361,18 @@ struct SwipeBehind: View {
                 .background(RoundedRectangle(cornerRadius: 7).fill(timing ? Theme.ink.opacity(0.8) : Theme.accent.opacity(reached ? 1 : 0.6)))
             } else if offset < 0 {
                 HStack(spacing: 6) {
-                    Text("delete").font(Theme.font(14))
-                    Image(systemName: "trash")
+                    Text(stopping ? "stop timer" : "delete").font(Theme.font(14))
+                    Image(systemName: stopping ? "stop.circle" : "trash")
                 }
                 .foregroundStyle(.white)
                 .padding(.trailing, 18)
                 .frame(maxWidth: .infinity, alignment: .trailing)
-                .background(RoundedRectangle(cornerRadius: 7).fill(Theme.late.opacity(reached ? 0.95 : 0.6)))
+                .background(RoundedRectangle(cornerRadius: 7).fill(stopping ? Theme.secondary.opacity(reached ? 1 : 0.6) : Theme.late.opacity(reached ? 0.95 : 0.6)))
             }
         }
         .animation(.easeOut(duration: 0.12), value: reached)
         .animation(.easeOut(duration: 0.12), value: timing)
+        .animation(.easeOut(duration: 0.12), value: stopping)
     }
 }
 

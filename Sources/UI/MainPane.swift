@@ -7,6 +7,8 @@ struct MainPane: View {
     var body: some View {
         VStack(spacing: 0) {
             Header(model: model)
+            // A timer that's just gone off: said at the top (nothing about timers sits at the bottom).
+            if model.timers.ringing != nil { RingingBar(model: model).transition(.move(edge: .top).combined(with: .opacity)) }
             if model.place == .timers {
                 TimersPage(model: model)
             } else {
@@ -19,8 +21,7 @@ struct MainPane: View {
                 if model.showAutosort { AutosortPanel(model: model) }
                 TaskListView(model: model)
             }
-            if model.timers.ringing != nil { RingingBar(model: model) }
-            if !model.timers.timers.isEmpty, model.place != .timers { TimerBar(model: model) }
+
         }
         .background(Theme.paper)
     }

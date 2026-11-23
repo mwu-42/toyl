@@ -33,8 +33,9 @@ open behind what you're doing (in front only if you were using toyl), never taki
   - drag the line between panels to resize them · double-click it for the usual width
 - 👆 **swipe a task** (two fingers on the trackpad, as in Mail; or a finger on the phone). it pulls freely, then harder and harder, like a rubber band
   - right: into its list's **in progress** (again to take it back out)
-  - right, all the way: in progress, with a timer going on it
-  - left, a long way (so it's never by accident): delete (⌘z puts it back)
+  - right, much further: in progress, with a timer going on it
+  - left, on a task with a timer going: stop the timer; further still: delete
+  - left, on any other task, a good way (so it's never by accident): delete (⌘z puts it back)
 - ✉️ **important email**: gmail and outlook, pulled into the inbox and flagged ✉ email. below.
 - 📁 **projects** inside a list: the big pieces of work (a final project, midterm prep, an event)
   - a list shows its loose tasks first, then each project under a big heading, with a + to add straight into it
@@ -48,7 +49,7 @@ open behind what you're doing (in front only if you were using toyl), never taki
   - `fri 5pm`, `tomorrow`, `nov 30`, `by fri`, `next week` when it's due
   - `every week` repeats · `~30m` its timer's length · `!` pin · ` // ` notes
   - `/timer`, `/timer 30m`, `/stopwatch` start a timer on it
-- ⏱ **timers on any task**: hover a task and click ⏱ (right-click it for lengths), or pick one in its details: 10m · 30m · 1h · 6h · 24h, or type one. time adds up on the task.
+- ⏱ **timers on any task** (a running one shows on its task, and in timers; nothing at the window's foot): hover a task and click ⏱ (right-click it for lengths), or pick one in its details: 10m · 30m · 1h · 6h · 24h, or type one. time adds up on the task.
 - 🔗 **links in notes are cards** in the details: the page's icon and title; click to open. rows stay plain.
 - ➕ **every list has its heading in all**, empty or not, with a + on the right to add straight into it.
 - 🪄 **autosort**: files new tasks where your others go (on the mac); ⌥⌘A does the inbox.
@@ -138,7 +139,8 @@ toyl on your phone is made for adding tasks and running timers, served by toyl o
 - ➕ a big "new task" field first, read the way quick add reads it (`fri 5pm`, `#cs`, `/timer 30m`), with your lists to file into
 - ⏱ big buttons for 10m · 30m · 1h · 6h · 24h and a stopwatch, on anything or on a task; what's running, to pause, +5 or stop
 - 🗂 your lists and their tasks (tap a list to fold it), to check off or time
-  - swipe right: in progress · all the way right: in progress with a timer · a long way left: delete (with undo)
+  - swipe right: in progress · much further right: in progress with a timer
+  - swipe left: stop its timer if one's going, further: delete (with undo)
 - ✉️ added while the Mac can't be reached: kept on the phone, sent when it can
 
 **Setting it up, once:**

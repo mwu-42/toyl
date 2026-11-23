@@ -103,15 +103,19 @@ final class AppModel: ObservableObject {
         var offset: CGFloat
     }
 
-    /// How far a swipe goes before it does something: right a little, in progress; right a long
-    /// way, in progress with a timer going; left a long way (so it's not done by accident), delete.
+    /// How far a swipe goes before it does something.
+    /// - right a little: in progress; right a long way: in progress with a timer going
+    /// - left, with a timer going: stop the timer; a long way further: delete
+    /// - left, with none: delete (a good way, so it's not done by accident)
     static let swipeReach: CGFloat = 70
-    static let swipeTimerReach: CGFloat = 190
+    static let swipeTimerReach: CGFloat = 280
+    static let swipeStopReach: CGFloat = 120
     static let swipeDeleteReach: CGFloat = 170
+    static let swipeDeleteFarReach: CGFloat = 280
 
     /// A rubber band, as iOS pulls: free for the first `free` points, then harder and harder,
     /// never past `free + give`.
-    static func rubber(_ x: CGFloat, free: CGFloat = 150, give: CGFloat = 110) -> CGFloat {
+    static func rubber(_ x: CGFloat, free: CGFloat = 200, give: CGFloat = 160) -> CGFloat {
         let size = abs(x)
         guard size > free else { return x }
         let pulled = free + (1 - 1 / ((size - free) * 0.55 / give + 1)) * give
@@ -820,11 +824,17 @@ final class AppModel: ObservableObject {
             swallowMomentum = true
             let offset = swipe?.offset ?? track.dx
             withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { swipe = nil }
+            let running = timers.timer(for: track.id)
             if offset >= Self.swipeTimerReach {
                 startInProgress(track.id)
             } else if offset >= Self.swipeReach {
                 toggleInProgress(track.id)
-            } else if offset <= -Self.swipeDeleteReach {
+            } else if let running, offset > -Self.swipeDeleteFarReach {
+                if offset <= -Self.swipeStopReach {
+                    withAnimation(.snappy(duration: 0.2)) { timers.stop(running.id) }
+                    banner = "timer stopped"
+                }
+            } else if offset <= -(running == nil ? Self.swipeDeleteReach : Self.swipeDeleteFarReach) {
                 withAnimation(.easeInOut(duration: 0.22)) { store.delete([track.id]) }
                 selection.remove(track.id)
                 banner = "deleted · ⌘z puts it back"

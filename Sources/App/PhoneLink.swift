@@ -430,6 +430,10 @@ final class PhoneLink: ObservableObject {
         case "more":
             guard let id = f["id"] as? String, model.timers.timers.contains(where: { $0.id == id }) else { return .json(["error": "that's gone"], status: 404) }
             model.timers.extend(id, minutes: min(max((f["minutes"] as? NSNumber)?.doubleValue ?? 5, 1), 60))
+        case "stoptimer":
+            guard let t = task(), let running = model.timers.timer(for: t.id) else { return .json(["error": "no timer on it"], status: 404) }
+            model.timers.stop(running.id)
+            said = "timer stopped"
         case "dismiss":
             model.timers.dismissRinging()
         case "snooze":
