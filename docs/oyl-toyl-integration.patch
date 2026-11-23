@@ -1,0 +1,440 @@
+diff --git a/README.md b/README.md
+index f5249c3..be90870 100644
+--- a/README.md
++++ b/README.md
+@@ -28,6 +28,8 @@ Oyl's phone remote puts the notch on your phone, from its browser, over the same
+ 
+ Midnight Oyl (right-click the notch, or on the Oyls tab or the settings tab, where its switch is unlike the other toggles, since it changes the whole look: a little sky with the moon at its end, its name set in Midnight's own face; pointed at, its stars come out and the moon comes up, or in Midnight they quicken and the moon glints; clicked, the knob slides over and the look changes behind it) is a second look, made more to be looked at than used: a Victorian celestial atlas plate seen through TouchDesigner's glass. Opening the notch (gently, easing to rest with no bounce) runs a line of night out along the menu bar, then lets it fall into a band across the whole top of the screen, the sky engraved on it in silver-white: a star chart round the notch as its pole, stars that light up outward as it opens, a planisphere and an orrery that draw on and turn, a moon that tells the time (new at midnight, it waxes through the morning, lit by as much of its face as the morning's gone, till it's full at noon; then it wanes, dark by as much as the afternoon and evening have, and round it a dial of the day, midnight at its top, with a glint for now), constellations, drifting star dust and the odd shooting star. Closing runs it all back, nearly as slowly (0.9 s) and on the same curve: the page goes first, blurring and lifting away as it came in, then the band folds back up into the notch, its foot drawing in, its petals parting and its stars going out inward, the planisphere's hours unwinding; it fades only at the last, nearly back in the notch. It has no edge: its foot flows in slow swells and lobes and dissolves into the desktop, with motes, stars, filaments and drops of light spilling out past it. It reaches down only as far as the page needs, a little sky under it. Every word on the pages is set in a High Victorian face, and their colors are paled toward white. With gestures on, the camera's on while it's open but never shown (with them off, it stays off, and the rock sign isn't looked for): your hands are, as constellations in its sky, each joint a star, named for the gesture they're making, so there's no separate camera tab. Click the moon to keep it open as a display, and again to let it close. It stays open only while the pointer's over its page (as big as the open notch would be, and a little round it) or on the way over to the moon, not anywhere in its sky, so it's as easy to leave as the notch. The Oyls are moyls: small, real-looking planets in their Oyls' colors, lit from one side with a thin rim of air, each a world that fits its job (an agent's a banded gas giant with a storm and, while Claude works, an orange polar cap; the song's a ringed one, its rings swelling on the beat (an audiobook's, its rings still, a little moon going slowly round as its glow comes and goes); a timer's an ice giant, its moon going round once over its time; staying awake's an ocean world under cloud; the battery's and bedtime's cratered rock), with a flare for a cheer. They're never on the menu bar: when the band opens they swoop down into its sky and drift among the stars, there to be clicked, and are gone again as it closes; when they announce what they're doing, each wears a ring of engraved capitals all the way round it saying so. On the music page, the wave is a galaxy in the cover's colors, its stars twinkling where the wave rises over them, and riding its crest as the scrubber is a bright four-pointed star. Holding up the rock 'n' roll sign (thumb and little finger out) turns your hands into the pointer, manus mode: each hand is a pointer of its own, a small constellation of it at its index fingertip (its stars born as it starts, out from the wrist, each a faint cloud gathering in and lit in a flash; and as it stops, each flaring and bursting, faintly, in a few sparks), and the cursor (hidden meanwhile, until the trackpad moves it) goes with whichever hand is doing something. Pinching your index finger and thumb clicks (holding the pinch holds, to drag; two quick pinches double-click), and so does resting the pointer on something a moment, a ring of dots drawing round it till it clicks. Touching your thumb to your middle fingertip instead, the index still pointing, right-clicks. Two fingers held together, side by side, are two on the trackpad: move them to scroll. Three together swipe as the trackpad's set to: across between Spaces and full-screen apps, up for Mission Control, down for the app's windows. A flick of the wrist works too, at a wrist's pace (a turn away from how the fingers pointed as they came together needn't be as quick as a dart of the whole hand, and a camera slowed to 15 frames a second in dim light reads it as well): with two fingers up it scrolls the way they flicked, as far as their tips swept, the page gliding on as a trackpad's does once a flicking finger lifts (even if the hand stops dead with its fingers still together, or the camera loses them mid-flick); with three it swipes, left or right between Spaces. Bringing the hand back doesn't scroll or swipe back, and flicking again the same way goes on. To go the other way, hold it still a moment first; with two fingers, that also stops the glide, and moving slowly scrolls as before. Curling the fingers in to let go isn't a flick. Both hands pinching zoom the app in front: draw them apart to zoom in, together to zoom out. It says what it's doing in signs rather than words: Gemini's ♊︎ while scrolling, a triangle while swiping, ⊕ and ⊖ as it zooms, a padlock if it can't click. To put it down, make the sign again, or rest the pointer a moment on the little sundial in the top bar, left of the band's page. It needs Accessibility, for the clicks, scrolls, swipes and zooms; without it the pointer moves but can't click. Gestures have to be on.
+ 
++toyl (things off your list, ~/toyl), tod's successor, is a Mac app of its own, and Oyl works with it as it did with tod: once toyl has a list (in ~/Library/Application Support/toyl, tod's format grown), the to-do field, the ideas page (toyl's ideas, tod's brain dump), the work log's what's been done today and the phone remote all work on toyl's list instead of tod's, under the same lock on its folder, so nothing either saves is lost; a #name no list has makes a toyl list with one section, not tod's three lanes. toyl's timers come too: a countdown started in toyl (on a task, on its timers page, or by an agent through its command line or MCP server) shows here as Oyl's own do, held on the closed notch if toyl asks (a focus timer does), and rings here, toyl leaving the ringing to Oyl while Oyl's open; paused, given more time or stopped here, it's paused, lengthened or stopped in toyl too, and the time it ran goes on its task. toyl's stopwatches stay in toyl.
++
+ ## Building
+ 
+ Needs macOS 14.2 or later and the Xcode Command Line Tools. No Xcode project.
+diff --git a/Sources/NotchWindow.swift b/Sources/NotchWindow.swift
+index ed4b349..5691fb5 100644
+--- a/Sources/NotchWindow.swift
++++ b/Sources/NotchWindow.swift
+@@ -253,6 +253,7 @@ final class NotchState: ObservableObject {
+     /// Your check-ins, filed by #tag (see `WorkLog`).
+     let workLog = WorkLog()
+     private var todForwarding: AnyCancellable?
++    private var timerMirroring: AnyCancellable?
+     private var projectsForwarding: AnyCancellable?
+     private var logForwarding: AnyCancellable?
+     private var forwarding: AnyCancellable?
+@@ -273,6 +274,11 @@ final class NotchState: ObservableObject {
+         forwarding = Publishers.Merge4(power.objectWillChange, dictation.objectWillChange, Features.shared.objectWillChange,
+                                        AgentRadar.shared.objectWillChange.merge(with: notes.objectWillChange))
+             .sink { [weak self] _ in self?.objectWillChange.send() }
++        // toyl's timers on the notch too, and what's done to them here back in toyl's file.
++        timerMirroring = tod.$toylTimers.sink { [weak self] mirrored in
++            MainActor.assumeIsolated { self?.timers.mirror(mirrored) }
++        }
++        timers.onMirroredChange = { [weak self] change in self?.tod.saveToylTimer(change) }
+         // A page turned off while it's showing: to Oyl's own.
+         pageSwitch = Features.shared.changed
+             .sink { [weak self] _ in
+diff --git a/Sources/Timers.swift b/Sources/Timers.swift
+index ae14d7d..cdced18 100644
+--- a/Sources/Timers.swift
++++ b/Sources/Timers.swift
+@@ -63,6 +63,34 @@ final class TimerStore: ObservableObject {
+     /// let go of when it's gone).
+     @Published private(set) var focused: UUID?
+ 
++    /// One of toyl's countdowns, as toyl's file has it (see `TodStore.toylTimers`).
++    struct Mirrored: Equatable {
++        let id: UUID
++        let label: String
++        let duration: TimeInterval
++        let endDate: Date?
++        let pausedRemaining: TimeInterval?
++        /// toyl asks for it to be held on the notch.
++        let pin: Bool
++        /// Already marked as showing here.
++        let shown: Bool
++    }
++
++    /// What's been done here to one of toyl's timers, for toyl's file.
++    enum MirroredChange {
++        case shown(UUID)
++        case changed(ReminderTimer)
++        /// Stopped or gone off, after running this long.
++        case stopped(UUID, worked: TimeInterval)
++    }
++
++    /// Told what's done here to one of toyl's timers.
++    var onMirroredChange: ((MirroredChange) -> Void)?
++    /// Which of `timers` are toyl's (kept in toyl's file, not here), and which of those have gone
++    /// off here and wait for toyl's file to let go of them.
++    private var mirrored: Set<UUID> = []
++    private var rangMirrored: Set<UUID> = []
++
+     private let defaults: UserDefaults
+     private let chime: () -> Void
+     private let tap: () -> Void
+@@ -146,9 +174,55 @@ final class TimerStore: ObservableObject {
+             timers[index].endDate = now.addingTimeInterval(timers[index].remaining(at: now))
+             timers[index].pausedRemaining = nil
+         }
++        tellToyl(timers[index])
+         changed()
+     }
+ 
++    /// toyl's countdowns, shown and rung here as Oyl's own are: each one toyl has is added or
++    /// brought up to date, and one toyl no longer has goes. (One held by toyl is held on the
++    /// notch the first time it's seen.) What's done to them here goes back to toyl's file.
++    func mirror(_ incoming: [Mirrored]) {
++        let ids = Set(incoming.map(\.id))
++        var changedAny = false
++        let gone = timers.filter { mirrored.contains($0.id) && !ids.contains($0.id) }
++        if !gone.isEmpty {
++            timers.removeAll { gone.contains($0) }
++            changedAny = true
++        }
++        mirrored.formIntersection(ids)
++        rangMirrored.formIntersection(ids)
++        var unmarked: [UUID] = []
++        for item in incoming where !rangMirrored.contains(item.id) {
++            let timer = ReminderTimer(id: item.id, label: item.label, duration: item.duration, endDate: item.endDate,
++                                      pausedRemaining: item.endDate == nil ? (item.pausedRemaining ?? item.duration) : nil)
++            if let index = timers.firstIndex(where: { $0.id == item.id }) {
++                if timers[index] != timer {
++                    timers[index] = timer
++                    changedAny = true
++                }
++            } else {
++                timers.append(timer)
++                mirrored.insert(item.id)
++                changedAny = true
++                if item.pin { hold(item.id) }
++            }
++            if !item.shown { unmarked.append(item.id) }
++        }
++        if changedAny { changed() }
++        // After this pass, not in the middle of it (saving it changes what comes in).
++        if !unmarked.isEmpty {
++            DispatchQueue.main.async { [weak self] in
++                MainActor.assumeIsolated { for id in unmarked { self?.onMirroredChange?(.shown(id)) } }
++            }
++        }
++    }
++
++    /// toyl's file told of a change made here to one of its timers.
++    private func tellToyl(_ timer: ReminderTimer) {
++        guard mirrored.contains(timer.id) else { return }
++        onMirroredChange?(.changed(timer))
++    }
++
+     /// Changes a timer to what's been typed for it: its label, and its time unless that's still
+     /// the `shown` one it was put up for editing with (then it keeps the time it really has left).
+     /// A paused timer stays paused. "/pin" holds it on the notch.
+@@ -166,6 +240,7 @@ final class TimerStore: ObservableObject {
+         }
+         timers[index] = timer
+         if parsed.pin { hold(id) }
++        tellToyl(timer)
+         changed()
+     }
+ 
+@@ -183,10 +258,15 @@ final class TimerStore: ObservableObject {
+         } else {
+             timers[index].pausedRemaining = left + added
+         }
++        tellToyl(timers[index])
+         changed()
+     }
+ 
+     func cancel(_ id: UUID) {
++        if mirrored.contains(id), let timer = timers.first(where: { $0.id == id }) {
++            mirrored.remove(id)
++            onMirroredChange?(.stopped(id, worked: max(timer.duration - timer.remaining(at: Date()), 0)))
++        }
+         timers.removeAll { $0.id == id }
+         changed()
+     }
+@@ -203,7 +283,8 @@ final class TimerStore: ObservableObject {
+     }
+ 
+     private func changed() {
+-        let data = try? JSONEncoder().encode(timers)
++        // toyl's are kept in toyl's file, and come back from there.
++        let data = try? JSONEncoder().encode(timers.filter { !mirrored.contains($0.id) })
+         defaults.set(data, forKey: Self.storageKey)
+         if let focused, !timers.contains(where: { $0.id == focused }) {
+             self.focused = nil
+@@ -217,6 +298,10 @@ final class TimerStore: ObservableObject {
+         let now = Date()
+         let finished = timers.filter { ($0.endDate ?? .distantFuture) <= now }
+         if !finished.isEmpty {
++            for timer in finished where mirrored.contains(timer.id) {
++                rangMirrored.insert(timer.id)
++                onMirroredChange?(.stopped(timer.id, worked: timer.duration))
++            }
+             timers.removeAll { finished.contains($0) }
+             remember(finished, at: now)
+             changed()
+diff --git a/Sources/TodStore.swift b/Sources/TodStore.swift
+index 45677a3..2e135bf 100644
+--- a/Sources/TodStore.swift
++++ b/Sources/TodStore.swift
+@@ -3,7 +3,10 @@ import Foundation
+ import SwiftUI
+ 
+ /// tod's lists and tasks, shared with tod (the owner's own to-do app): a task added from the
+-/// notch is in tod too, and one checked off in tod is done here. It works on tod's own
++/// notch is in tod too, and one checked off in tod is done here. Once toyl (tod's successor, its
++/// own Mac app) has a list, it's toyl's: `~/Library/Application Support/toyl/toyl.json` is tod's
++/// format grown, worked on the same way, under the same lock (toyl's own timers come too, to show
++/// on the notch: see `toylTimers`). It works on tod's own
+ /// `data/state.json` and keeps every field it doesn't use (tod's layout, settings, subtasks…) just
+ /// as it found it. Each change is made on the latest copy of the file, then saved through tod's
+ /// server when that's running (so tod's backup, and its check for saves it hasn't seen, apply) or
+@@ -65,6 +68,9 @@ final class TodStore: ObservableObject {
+     @Published private(set) var isAvailable = false    // tod found, and its data read
+     /// What's wrong, if tod's data can't be read or a change couldn't be saved.
+     @Published private(set) var trouble: String?
++    /// toyl's countdowns (running or paused), for the notch to show and ring (see
++    /// `TimerStore.mirror`). None with tod, which has no timers.
++    @Published private(set) var toylTimers: [TimerStore.Mirrored] = []
+     /// Told of each change Oyl makes to a task once it's saved (for the calendar to follow).
+     var onChange: ((Change) -> Void)?
+ 
+@@ -191,6 +197,14 @@ final class TodStore: ObservableObject {
+         change { $0.remove(id) }
+     }
+ 
++    /// What's been done on the notch to one of toyl's timers, saved in toyl's file (so toyl, its
++    /// command line and its agents see it too).
++    func saveToylTimer(_ what: TimerStore.MirroredChange) {
++        guard boards?.isToyl == true else { return }
++        let now = Date()
++        change { $0.apply(what, at: now) }
++    }
++
+     // MARK: - changes
+ 
+     /// Just what changed, so a field tod changed meanwhile isn't put back.
+@@ -279,16 +293,29 @@ final class TodStore: ObservableObject {
+ 
+     /// Finds tod's data and reads it.
+     private func find() {
+-        guard let (root, port) = givenRoot.map({ ($0, givenPort) }) ?? Self.installed() else {
+-            return loaded(.trouble("Can't find tod"))
++        let disk: Disk
++        if givenRoot == nil, let toyl = Self.toyl() {
++            disk = Disk(folder: toyl, file: toyl.appendingPathComponent("toyl.json"),
++                        backup: toyl.appendingPathComponent("toyl.backup.json"), port: nil, app: "toyl")
++        } else {
++            guard let (root, port) = givenRoot.map({ ($0, givenPort) }) ?? Self.installed() else {
++                return loaded(.trouble("Can't find tod"))
++            }
++            disk = Disk(root: root, port: port)
+         }
+-        let disk = Disk(root: root, port: port)
+         self.disk = disk
+         watch()
+         seen = disk.signature()
+         loaded(disk.read())
+     }
+ 
++    /// toyl's folder, once toyl's made its list there.
++    private static func toyl() -> URL? {
++        let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
++            .appendingPathComponent("toyl", isDirectory: true)
++        return FileManager.default.fileExists(atPath: folder.appendingPathComponent("toyl.json").path) ? folder : nil
++    }
++
+     /// tod's folder and its server's port, from the tod app.
+     private static func installed() -> (URL, Int?)? {
+         let home = FileManager.default.homeDirectoryForCurrentUser
+@@ -370,6 +397,8 @@ final class TodStore: ObservableObject {
+         }
+         if lists != self.lists { self.lists = lists }
+         if tasks != self.tasks { self.tasks = tasks }
++        let timers = boards?.toylTimers ?? []
++        if timers != toylTimers { toylTimers = timers }
+         if isAvailable != (boards != nil) { isAvailable = boards != nil }
+     }
+ 
+@@ -419,6 +448,67 @@ final class TodStore: ObservableObject {
+ 
+         var weekStart: Int { ((json["settings"] as? [String: Any])?["weekStart"] as? NSNumber)?.intValue ?? 1 }
+ 
++        /// toyl's file (tod's format, grown), not tod's.
++        var isToyl: Bool { json["toyl"] != nil }
++
++        /// toyl's countdowns, running or paused (its stopwatches aren't the notch's kind of timer).
++        var toylTimers: [TimerStore.Mirrored] {
++            (json["timers"] as? [Any] ?? []).compactMap { item in
++                guard let timer = item as? [String: Any], timer["kind"] as? String ?? "countdown" == "countdown",
++                      let id = (timer["id"] as? String).flatMap(UUID.init(uuidString:)),
++                      let duration = (timer["duration"] as? NSNumber)?.doubleValue, duration > 0 else { return nil }
++                return TimerStore.Mirrored(id: id, label: timer["label"] as? String ?? "", duration: duration,
++                                           endDate: Self.moment(timer["endsAt"]),
++                                           pausedRemaining: (timer["pausedLeft"] as? NSNumber)?.doubleValue,
++                                           pin: timer["pin"] as? Bool ?? false, shown: timer["oyl"] as? Bool ?? false)
++            }
++        }
++
++        /// A change made on the notch to one of toyl's timers, as toyl makes it: paused, carried
++        /// on, given more time or renamed; stopped or gone off (its time then goes on its task,
++        /// if it ran half a minute, and into toyl's log, the latest fifty kept); or marked as
++        /// showing here (so toyl leaves the ringing to Oyl).
++        mutating func apply(_ change: TimerStore.MirroredChange, at now: Date) {
++            var timers = json["timers"] as? [Any] ?? []
++            func index(of id: UUID) -> Int? {
++                timers.firstIndex { (($0 as? [String: Any])?["id"] as? String).flatMap(UUID.init(uuidString:)) == id }
++            }
++            switch change {
++            case .shown(let id):
++                guard let at = index(of: id), var timer = timers[at] as? [String: Any], timer["oyl"] as? Bool != true else { return }
++                timer["oyl"] = true
++                timers[at] = timer
++            case .changed(let changed):
++                guard let at = index(of: changed.id), var timer = timers[at] as? [String: Any] else { return }
++                timer["label"] = changed.label
++                timer["duration"] = changed.duration
++                timer["endsAt"] = changed.endDate.map { Self.ms($0) }
++                timer["pausedLeft"] = changed.pausedRemaining
++                timers[at] = timer
++            case .stopped(let id, let worked):
++                guard let at = index(of: id), let timer = timers[at] as? [String: Any] else { return }
++                timers.remove(at: at)
++                log(timer, worked: worked, at: now)
++            }
++            json["timers"] = timers
++        }
++
++        private mutating func log(_ timer: [String: Any], worked: TimeInterval, at now: Date) {
++            let ms = Self.ms(now)
++            if worked >= 30, let task = timer["task"] as? String, var entry = self[task: task] {
++                entry["spent"] = ((entry["spent"] as? NSNumber)?.intValue ?? 0) + Int(worked.rounded())
++                entry["updatedAt"] = ms
++                self[task: task] = entry
++            }
++            guard worked >= 1 else { return }
++            var logged: [String: Any] = ["id": timer["id"] ?? UUID().uuidString, "label": timer["label"] ?? "", "seconds": worked.rounded(),
++                                         "ended": ms, "kind": "countdown"]
++            if let task = timer["task"] { logged["task"] = task }
++            var log = json["timerLog"] as? [Any] ?? []
++            log.insert(logged, at: 0)
++            json["timerLog"] = Array(log.prefix(50))
++        }
++
+         // MARK: reading
+ 
+         private var listEntries: [[String: Any]] { (json["lists"] as? [Any] ?? []).compactMap { $0 as? [String: Any] } }
+@@ -596,7 +686,8 @@ final class TodStore: ObservableObject {
+             // As tod's createList makes one; tod gives it a spot on the canvas when it loads it.
+             let used = Set(listEntries.compactMap { Self.hex($0["color"]) })
+             let color = Self.palette.first { !used.contains($0) } ?? Self.palette[listEntries.count % Self.palette.count]
+-            let columns = ["To do", "In progress", "Done"].map { ["id": Self.uid(), "name": $0] }
++            // toyl's lists are lists, with one section to start; tod's are boards, with three lanes.
++            let columns = (isToyl ? ["to do"] : ["To do", "In progress", "Done"]).map { ["id": Self.uid(), "name": $0] }
+             json["lists"] = (json["lists"] as? [Any] ?? []) + [["id": newList.id, "name": newList.name, "color": color,
+                                                                   "columns": columns, "createdAt": ms] as [String: Any]]
+             if let order = json["order"] as? [Any] { json["order"] = order + [newList.id] }
+@@ -668,7 +759,7 @@ final class TodStore: ObservableObject {
+             (value as? String).flatMap { $0.isEmpty ? nil : $0 }
+         }
+ 
+-        private static func moment(_ value: Any?) -> Date? {
++        static func moment(_ value: Any?) -> Date? {
+             (value as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue / 1000) }
+         }
+ 
+@@ -708,13 +799,23 @@ final class TodStore: ObservableObject {
+         let file: URL
+         let backup: URL
+         let port: Int?
++        /// Whose data it is, for saying what's wrong: tod's or toyl's.
++        let app: String
+         let queue = DispatchQueue(label: "Oyl.tod", qos: .userInitiated)
+         private let session: URLSession
+ 
+-        init(root: URL, port: Int?) {
+-            folder = root.appendingPathComponent("data", isDirectory: true)
+-            file = folder.appendingPathComponent("state.json")
+-            backup = folder.appendingPathComponent("state.backup.json")
++        convenience init(root: URL, port: Int?) {
++            let folder = root.appendingPathComponent("data", isDirectory: true)
++            self.init(folder: folder, file: folder.appendingPathComponent("state.json"),
++                      backup: folder.appendingPathComponent("state.backup.json"), port: port, app: "tod")
++        }
++
++        /// A file of its own (toyl's), saved straight to the file: there's no server.
++        init(folder: URL, file: URL, backup: URL, port: Int?, app: String) {
++            self.folder = folder
++            self.file = file
++            self.backup = backup
++            self.app = app
+             self.port = port
+             let configuration = URLSessionConfiguration.ephemeral
+             configuration.timeoutIntervalForRequest = 3
+@@ -730,8 +831,8 @@ final class TodStore: ObservableObject {
+         }
+ 
+         func read() -> Loaded {
+-            guard let raw = try? Data(contentsOf: file) else { return .trouble("Can't find tod's data") }
+-            guard let boards = Boards(raw) else { return .trouble("tod's data can't be read") }
++            guard let raw = try? Data(contentsOf: file) else { return .trouble("Can't find \(app)'s data") }
++            guard let boards = Boards(raw) else { return .trouble("\(app)'s data can't be read") }
+             return .found(boards, rev: Self.rev(raw))
+         }
+ 
+@@ -741,7 +842,7 @@ final class TodStore: ObservableObject {
+         /// the same, so two can't keep colliding).
+         func save(_ edit: (inout Boards) -> Void) -> Saved {
+             let lock = Darwin.open(folder.path, O_RDONLY)
+-            guard lock >= 0 else { return Saved(rev: "", trouble: "Can't find tod's data") }
++            guard lock >= 0 else { return Saved(rev: "", trouble: "Can't find \(app)'s data") }
+             defer { close(lock) }    // which unlocks it
+             flock(lock, LOCK_EX)
+             var rev = ""
+@@ -749,13 +850,13 @@ final class TodStore: ObservableObject {
+             let deadline = Date().addingTimeInterval(15)
+             for attempt in 0..<12 {
+                 if attempt > 0 { Thread.sleep(forTimeInterval: min(0.01 * pow(2, Double(attempt - 1)), 0.25) * .random(in: 0.5...1.5)) }
+-                guard let raw = try? Data(contentsOf: file) else { return Saved(rev: "", trouble: "Can't find tod's data") }
++                guard let raw = try? Data(contentsOf: file) else { return Saved(rev: "", trouble: "Can't find \(app)'s data") }
+                 rev = Self.rev(raw)
+-                guard var boards = Boards(raw) else { return Saved(rev: rev, trouble: "tod's data can't be read") }
++                guard var boards = Boards(raw) else { return Saved(rev: rev, trouble: "\(app)'s data can't be read") }
+                 let before = boards
+                 edit(&boards)
+                 guard !boards.isSame(as: before) else { return Saved(boards: boards, rev: rev) }
+-                switch boards.data(laidOut: false).map({ send($0, base: rev) }) ?? .failed("Couldn't save to tod") {
++                switch boards.data(laidOut: false).map({ send($0, base: rev) }) ?? .failed("Couldn't save to \(app)") {
+                 case .saved(let saved):
+                     return Saved(boards: boards, rev: saved, changes: before.changes(to: boards))
+                 case .conflict:
+@@ -764,23 +865,23 @@ final class TodStore: ObservableObject {
+                     // It may be in the middle of a save of tod's that would land on top of a
+                     // write here, or still make this one: ask it again rather than write the file.
+                     if Date() < deadline { continue }
+-                    return Saved(rev: rev, trouble: "Couldn't save to tod: its server isn't answering")
++                    return Saved(rev: rev, trouble: "Couldn't save to \(app): its server isn't answering")
+                 case .failed(let trouble):
+                     return Saved(rev: rev, trouble: trouble)
+                 case .noServer:
+                     // Only on the file the change was made on: it may have moved on while the
+                     // server was asked.
+                     guard (try? Data(contentsOf: file)) == raw else { continue }
+-                    guard let body = boards.data(laidOut: true) else { return Saved(rev: rev, trouble: "Couldn't save to tod") }
++                    guard let body = boards.data(laidOut: true) else { return Saved(rev: rev, trouble: "Couldn't save to \(app)") }
+                     do {
+                         try write(body, replacing: raw)
+                     } catch {
+-                        return Saved(rev: rev, trouble: "Couldn't save to tod: \(error.localizedDescription)")
++                        return Saved(rev: rev, trouble: "Couldn't save to \(app): \(error.localizedDescription)")
+                     }
+                     return Saved(boards: boards, rev: Self.rev(body), changes: before.changes(to: boards))
+                 }
+             }
+-            return Saved(rev: rev, trouble: "Couldn't save to tod: it kept changing")
++            return Saved(rev: rev, trouble: "Couldn't save to \(app): it kept changing")
+         }
+ 
+         private enum Sent {
