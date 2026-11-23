@@ -106,10 +106,10 @@ enum SortMode: String, CaseIterable, Identifiable {
 }
 
 enum GroupMode: String, CaseIterable, Identifiable {
-    case none, section, list, day, tag
+    case none, section, list, day, tag, project
     var id: String { rawValue }
-    /// What the window offers (sections aren't shown any more: a list is one list).
-    static let offered: [GroupMode] = [.none, .list, .day, .tag]
+    /// What the window offers (sections aren't shown any more; projects are).
+    static let offered: [GroupMode] = [.project, .none, .list, .day, .tag]
     var name: String {
         switch self {
         case .none: return "nothing"
@@ -117,6 +117,7 @@ enum GroupMode: String, CaseIterable, Identifiable {
         case .list: return "list"
         case .day: return "day"
         case .tag: return "tag"
+        case .project: return "project"
         }
     }
 }
@@ -133,6 +134,9 @@ struct TaskGroup: Identifiable, Equatable {
     /// The day it's for (upcoming), to show that day's events by it.
     var day: String?
     var isLate = false
+    /// A project's tasks: dropped or added here, they join it; its heading is big.
+    var projectId: String?
+    var big: Bool { projectId != nil }
 }
 
 /// What each place holds, in what order, under what headings.
@@ -147,7 +151,7 @@ enum Views {
 
     static func defaultGroup(_ place: Place) -> GroupMode {
         switch place {
-        case .inbox, .list: return .none
+        case .inbox, .list: return .project
         case .upcoming: return .day
         case .anytime, .ideas, .tag, .filter, .search: return .list
         case .today, .logbook, .timers: return .none
@@ -303,6 +307,21 @@ enum Views {
                           listId: list.id, sectionId: section.id)
             }
             .filter { !$0.tasks.isEmpty || showHeadings || $0.sectionId == list.firstSection }
+        case .project:
+            let listId: String
+            switch place {
+            case .list(let id): listId = id
+            case .inbox: listId = ListModel.inbox
+            default: return groups(tasks, place: place, mode: .list, sort: sort, snap: snap, now: now, keepEmpty: keepEmpty)
+            }
+            guard let list = snap.list(listId) else { return [] }
+            let known = Set(list.projects.map(\.id))
+            let loose = tasks.filter { $0.project.map { !known.contains($0) } ?? true }
+            return [TaskGroup(id: "loose:" + listId, tasks: sorted(loose, by: sort, now: now), listId: listId, sectionId: list.firstSection)]
+                + list.projects.map { project in
+                    TaskGroup(id: "project:" + project.id, title: project.name, tasks: sorted(tasks.filter { $0.project == project.id }, by: sort, now: now),
+                              listId: listId, sectionId: list.firstSection, projectId: project.id)
+                }
         case .list:
             let order = snap.sidebarOrder
             return order.compactMap { list in

@@ -267,6 +267,7 @@ final class PhoneLink: ObservableObject {
             var email: Bool
             var sublist: Int
             var progress: Bool
+            var project: String?
         }
         /// A list and its open tasks.
         struct Group: Encodable {
@@ -339,7 +340,8 @@ final class PhoneLink: ObservableObject {
         return State.Task(id: task.id, title: task.title, when: Format.due(task, now: now), late: task.isLate(at: now),
                           list: list.map { $0.isSpecial ? $0.displayName : $0.bareName }, mark: list?.isSpecial == false ? list?.mark?.text : nil,
                           color: list?.color, timer: running.contains(task.id), email: task.isFromEmail,
-                          sublist: task.subtasks.filter { !$0.done }.count, progress: model.isInProgress(task))
+                          sublist: task.subtasks.filter { !$0.done }.count, progress: model.isInProgress(task),
+                          project: list?.project(task.project)?.name)
     }
 
     struct Parsed: Encodable {
@@ -405,9 +407,14 @@ final class PhoneLink: ObservableObject {
             said = "put back"
         case "progress":
             guard let t = task() else { return .json(["error": "that's gone"], status: 404) }
-            let was = model.isInProgress(t)
-            model.toggleInProgress(t.id)
-            said = was ? "back to to-do" : "in progress"
+            if f["timer"] as? Bool == true {
+                model.startInProgress(t.id)
+                said = "in progress, timer going"
+            } else {
+                let was = model.isInProgress(t)
+                model.toggleInProgress(t.id)
+                said = was ? "back to to-do" : "in progress"
+            }
         case "timer":
             let minutes = (f["minutes"] as? NSNumber)?.doubleValue
             if let minutes, !(minutes > 0 && minutes <= 24 * 60) { return .json(["error": "a timer from a minute to a day"], status: 400) }

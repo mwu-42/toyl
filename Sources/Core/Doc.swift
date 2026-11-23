@@ -24,6 +24,8 @@ struct TaskDraft {
     var email: MailLink?
     /// The Canvas assignment it's for.
     var canvas: CanvasLink?
+    /// The project (in its list) it's part of.
+    var project: String?
     var position: Position = .top
 
     init(title: String) { self.title = title }
@@ -49,6 +51,8 @@ struct TaskPatch {
     var duration: Int??
     var subtasks: [Subtask]?
     var event: EventLink??
+    /// The project it's part of (nil: none). Moving it to another list takes it out of its project.
+    var project: String??
     var spentDelta: Int?
     var order: Double?
     var done: Bool?
@@ -247,6 +251,7 @@ struct Doc {
         if let source = draft.source { entry["source"] = source }
         if let email = draft.email { entry["email"] = email.entry }
         if let canvas = draft.canvas { entry["canvas"] = canvas.entry }
+        if let project = draft.project, projectIds(in: list).contains(project) { entry["project"] = project }
         self[task: id] = entry
         return id
     }
@@ -290,6 +295,11 @@ struct Doc {
                 e["columnId"] = section
                 if p.order == nil { e["order"] = Self.number(topOrder(in: section, except: id)) }
             }
+            if list != current, p.project == nil { e["project"] = nil }
+        }
+        if let project = p.project {
+            let list = e["listId"] as? String ?? ListModel.inbox
+            e["project"] = project.flatMap { projectIds(in: list).contains($0) ? $0 : nil }
         }
         if !NSDictionary(dictionary: e).isEqual(to: before) { e["updatedAt"] = Moment.ms(now) }
         self[task: id] = e
@@ -490,6 +500,58 @@ struct Doc {
     }
 
     @discardableResult
+    // MARK: projects
+
+    func projectIds(in listId: String) -> [String] {
+        let list = (json["lists"] as? [Any] ?? []).compactMap { $0 as? [String: Any] }.first { $0["id"] as? String == listId }
+        return (list?["projects"] as? [Any] ?? []).compactMap { ($0 as? [String: Any])?["id"] as? String }
+    }
+
+    @discardableResult
+    mutating func addProject(to listId: String, name: String, id: String = UID.make()) -> String {
+        editList(listId) { list in
+            var projects = list["projects"] as? [Any] ?? []
+            projects.append(["id": id, "name": name] as [String: Any])
+            list["projects"] = projects
+        }
+        return id
+    }
+
+    mutating func renameProject(_ id: String, in listId: String, to name: String) {
+        editList(listId) { list in
+            list["projects"] = (list["projects"] as? [Any] ?? []).map { project in
+                guard var project = project as? [String: Any], project["id"] as? String == id else { return project }
+                project["name"] = name
+                return project
+            }
+        }
+    }
+
+    /// Takes a project away; its tasks stay in the list, in no project.
+    mutating func deleteProject(_ id: String, in listId: String, now: Date = Date()) {
+        editList(listId) { list in
+            list["projects"] = (list["projects"] as? [Any] ?? []).filter { ($0 as? [String: Any])?["id"] as? String != id }
+        }
+        for task in tasks where task.listId == listId && task.project == id {
+            var e = self[task: task.id]!
+            e["project"] = nil
+            e["updatedAt"] = Moment.ms(now)
+            self[task: task.id] = e
+        }
+    }
+
+    /// Moves a project to come before `before` (or last) in its list.
+    mutating func moveProject(_ id: String, in listId: String, before: String?) {
+        editList(listId) { list in
+            var projects = list["projects"] as? [Any] ?? []
+            guard let from = projects.firstIndex(where: { ($0 as? [String: Any])?["id"] as? String == id }) else { return }
+            let moving = projects.remove(at: from)
+            let to = before.flatMap { b in projects.firstIndex { ($0 as? [String: Any])?["id"] as? String == b } } ?? projects.count
+            projects.insert(moving, at: to)
+            list["projects"] = projects
+        }
+    }
+
     mutating func addSection(to listId: String, name: String, id: String = UID.make()) -> String {
         editList(listId) { list in
             var columns = list["columns"] as? [Any] ?? []

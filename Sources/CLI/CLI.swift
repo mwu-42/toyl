@@ -6,7 +6,7 @@ enum CLI {
     static let commands: Set<String> = [
         "help", "today", "inbox", "upcoming", "anytime", "all", "someday", "logbook", "ideas", "ls", "list", "search", "show",
         "add", "idea", "done", "undo", "undone", "rm", "delete", "edit", "lists", "tags", "new-list", "agenda", "overview",
-        "timer", "timers", "autosort", "md", "json", "path", "agents", "open", "mcp", "version", "connect", "google", "cal", "mail", "merge", "canvas",
+        "timer", "timers", "autosort", "md", "json", "path", "agents", "open", "mcp", "version", "connect", "google", "cal", "mail", "merge", "canvas", "project", "projects",
         "--help", "-h", "--version",
     ]
 
@@ -54,6 +54,7 @@ enum CLI {
             case "mail": try mail(args)
             case "merge": try merge(args)
             case "canvas": try canvas(args)
+            case "project", "projects": try project(args)
             case "cal":
                 switch try cal(args) {
                 case .needs: return 3
@@ -190,6 +191,7 @@ enum CLI {
         request.aim = args.value("aim")
         request.repeats = args.value("repeat")
         request.duration = args.value("duration")
+        request.project = args.value("project")
         if args.has("pin") { request.pinned = true }
         if args.has("someday") { request.someday = true }
         request.subtasks = args.values("sub")
@@ -250,6 +252,7 @@ enum CLI {
         if args.has("not-someday") { r.someday = false }
         r.repeats = args.value("repeat")
         r.duration = args.value("duration")
+        r.project = args.value("project")
         r.addSubtasks = args.values("sub")
         r.checkSubtasks = args.values("check")
         let task = try Actions.edit(args.positional.count > 1 ? args.positional.joined(separator: " ") : ref, r)
@@ -416,6 +419,37 @@ enum CLI {
             if args.has("json") { return print(Ops.text(["on": settings.on, "site": settings.site, "connected": Canvas.isConnected])) }
             print("canvas: \(settings.on ? "on" : "off") · \(settings.site) · by \(how)")
             print("last pulled: " + (settings.lastPull.map { GoogleTime.string($0) } ?? "never"))
+        }
+    }
+
+    /// Projects: `toyl projects [list]`, `toyl project add <list> <name>`, `toyl project rm <list> <name>`.
+    private static func project(_ args: Args) throws {
+        var words = args.positional
+        let what = words.first.map { ["add", "new", "rm", "delete"].contains($0) ? $0 : "" } ?? ""
+        if !what.isEmpty { words.removeFirst() }
+        let snap = try Actions.snapshot()
+        switch what {
+        case "add", "new":
+            guard words.count >= 2 else { throw Ops.Failure("toyl project add <list> <name>") }
+            let made = try Actions.addProject(list: words[0], name: words.dropFirst().joined(separator: " "))
+            out(["list": made.list.displayName, "id": made.id], args, text: "project in \(made.list.displayName): " + words.dropFirst().joined(separator: " "))
+        case "rm", "delete":
+            guard words.count >= 2, let list = Ops.list(words[0], in: snap) else { throw Ops.Failure("toyl project rm <list> <name>") }
+            let name = words.dropFirst().joined(separator: " ").lowercased()
+            guard let found = list.projects.first(where: { $0.name.lowercased() == name }) else { throw Ops.Failure("\(list.displayName) has no project “\(name)”") }
+            _ = try Actions.save { $0.deleteProject(found.id, in: list.id) }
+            print("project gone (its tasks stay in \(list.displayName))")
+        default:
+            let lists = words.first.flatMap { Ops.list($0, in: snap) }.map { [$0] } ?? snap.sidebarOrder.filter { !$0.projects.isEmpty }
+            if args.has("json") {
+                return print(Ops.text(["lists": lists.map { list in ["list": list.displayName, "projects": list.projects.map { project in
+                    ["id": project.id, "name": project.name, "open": snap.tasks.filter { $0.project == project.id && !$0.done }.count] as [String: Any] }] as [String: Any] }]))
+            }
+            if lists.allSatisfy({ $0.projects.isEmpty }) { return print("no projects yet (toyl project add <list> <name>)") }
+            for list in lists where !list.projects.isEmpty {
+                print(list.displayName)
+                for project in list.projects { print("  ▸ \(project.name) · \(snap.tasks.filter { $0.project == project.id && !$0.done }.count) open") }
+            }
         }
     }
 
@@ -646,6 +680,7 @@ enum CLI {
           toyl all|today|inbox|ideas [filter]   (and upcoming, logbook)
           toyl mail [pull [--dry-run]|gmail on|off|outlook client <id>|outlook connect|ask on|off]
           toyl merge <list> [into]        fold a list into another (the inbox, if none)
+          toyl projects [list] · toyl project add|rm <list> <name> · add/edit --project <name|none>
           toyl canvas [pull [--dry-run]|token <t>|feed <address>|site <canvas.school.edu>|on|off|forget]
           toyl ls <filter>             e.g. toyl ls "#school due:week", toyl ls essay is:all
           toyl show <id|title>
@@ -682,7 +717,7 @@ struct Args {
 
     static let valued: Set<String> = ["list", "section", "tag", "tags", "due", "time", "aim", "notes", "repeat", "duration", "title",
                                       "group", "color", "sub", "check", "minutes", "cal", "calendar", "label", "day", "date", "start", "from",
-                                      "end", "to", "for", "where", "location", "description", "task", "id", "secret"]
+                                      "end", "to", "for", "where", "location", "description", "task", "id", "secret", "project"]
 
     init(_ arguments: [String]) {
         var index = 0

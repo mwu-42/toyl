@@ -33,8 +33,13 @@ open behind what you're doing (in front only if you were using toyl), never taki
   - drag the line between panels to resize them · double-click it for the usual width
 - 👆 **swipe a task** (two fingers on the trackpad, as in Mail; or a finger on the phone). it pulls freely, then harder and harder, like a rubber band
   - right: into its list's **in progress** (again to take it back out)
-  - left: delete (⌘z puts it back)
+  - right, all the way: in progress, with a timer going on it
+  - left, a long way (so it's never by accident): delete (⌘z puts it back)
 - ✉️ **important email**: gmail and outlook, pulled into the inbox and flagged ✉ email. below.
+- 📁 **projects** inside a list: the big pieces of work (a final project, midterm prep, an event)
+  - a list shows its loose tasks first, then each project under a big heading, with a + to add straight into it
+  - make one: "new project" at the bottom of a list, the list's menu, or a task's project in its description
+  - drop a task on a project's heading to put it in; double-click the heading to rename it; right-click to delete it (its tasks stay)
 - ☑️ **sublists**: a task's sublist shows right under it. select the task to add to it · ✨ "break it down" makes one with apple intelligence.
 - 💡 **ideas**: loose ideas (`?` first) and anything put off (`/idea`, or drag it onto ideas). it keeps its list.
 - ⌨️ **quick add** reads what you type: `essay draft fri 5pm #cs ~2h !`
@@ -132,7 +137,7 @@ toyl on your phone is made for adding tasks and running timers, served by toyl o
 - ➕ a big "new task" field first, read the way quick add reads it (`fri 5pm`, `#cs`, `/timer 30m`), with your lists to file into
 - ⏱ big buttons for 10m · 30m · 1h · 6h · 24h and a stopwatch, on anything or on a task; what's running, to pause, +5 or stop
 - 🗂 your lists and their tasks (tap a list to fold it), to check off or time
-  - swipe right: in progress · swipe left: delete (with undo)
+  - swipe right: in progress · all the way right: in progress with a timer · a long way left: delete (with undo)
 - ✉️ added while the Mac can't be reached: kept on the phone, sent when it can
 
 **Setting it up, once:**

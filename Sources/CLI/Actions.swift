@@ -54,6 +54,8 @@ enum Actions {
         var someday: Bool?
         var idea = false
         var subtasks: [String] = []
+        /// A project in its list, by name (made if it isn't there).
+        var project: String?
         var source: String
     }
 
@@ -111,7 +113,17 @@ enum Actions {
         if let someday = r.someday { draft.someday = someday }
         draft.subtasks += r.subtasks.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         let id = UID.make()
-        let saved = try save { $0.addTask(draft, id: id, now: now) }
+        let projectName = r.project?.trimmingCharacters(in: .whitespaces).nilIfEmpty
+        let newProject = UID.make()
+        let saved = try save { doc in
+            var draft = draft
+            if let projectName {
+                let list = draft.listId ?? ListModel.inbox
+                draft.project = Snapshot(doc).list(list)?.projects.first { $0.name.lowercased() == projectName.lowercased() }?.id
+                    ?? doc.addProject(to: list, name: projectName, id: newProject)
+            }
+            _ = doc.addTask(draft, id: id, now: now)
+        }
         guard let task = saved.task(id) else { throw Ops.Failure("couldn't add it") }
         if let timer { _ = try startTimer(task: id, label: nil, minutes: timer.minutes.map(Double.init), stopwatch: timer.stopwatch) }
         return task
@@ -137,6 +149,8 @@ enum Actions {
         var addSubtasks: [String] = []
         var checkSubtasks: [String] = []
         var done: Bool?
+        /// A project in its list by name (made if it isn't there), or "none".
+        var project: String?
     }
 
     static func edit(_ ref: String, _ r: EditRequest) throws -> TaskModel {
@@ -196,7 +210,21 @@ enum Actions {
             p.subtasks = subtasks
         }
         p.done = r.done
-        let saved = try save { $0.updateTask(task.id, p, now: now) }
+        let projectName = r.project?.trimmingCharacters(in: .whitespaces).nilIfEmpty
+        let newProject = UID.make()
+        let saved = try save { doc in
+            var p = p
+            if let projectName {
+                if ["none", "no", "-"].contains(projectName.lowercased()) {
+                    p.project = .some(nil)
+                } else {
+                    let list = p.listId ?? task.listId
+                    p.project = .some(Snapshot(doc).list(list)?.projects.first { $0.name.lowercased() == projectName.lowercased() }?.id
+                        ?? doc.addProject(to: list, name: projectName, id: newProject))
+                }
+            }
+            doc.updateTask(task.id, p, now: now)
+        }
         return saved.task(task.id) ?? task
     }
 
@@ -358,6 +386,18 @@ extension Actions {
     /// Plans an event the owner's way (CALENDAR.md) and, if nothing's missing and `apply`, adds
     /// it (taking any copy off m) and ties its task to it. What's still needed comes back as
     /// questions instead.
+    /// A new project in a list. Its id.
+    static func addProject(list ref: String, name: String) throws -> (list: ListModel, id: String) {
+        let snap = try snapshot()
+        guard let list = Ops.list(ref, in: snap) else { throw Ops.Failure("no list called “\(ref)”") }
+        let name = name.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { throw Ops.Failure("a project needs a name") }
+        if let found = list.projects.first(where: { $0.name.lowercased() == name.lowercased() }) { return (list, found.id) }
+        let id = UID.make()
+        try save { $0.addProject(to: list.id, name: name, id: id) }
+        return (list, id)
+    }
+
     /// Pulls what's due from Canvas into the list (unless `apply` is false).
     static func pullCanvas(apply: Bool) throws -> Canvas.Outcome {
         let settings = CanvasSettings.load()
@@ -458,4 +498,8 @@ extension Actions {
         if !event.description.isEmpty { out["description"] = event.description }
         return out
     }
+}
+
+extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

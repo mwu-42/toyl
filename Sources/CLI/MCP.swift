@@ -154,6 +154,7 @@ enum Tools {
         "duration_minutes": ["type": ["integer", "null"], "description": "how long it should take, in minutes"],
         "pinned": bool("kept at the top of today"),
         "someday": bool("put off into ideas (it keeps its list)"),
+        "project": string("a project in its list, by name (made if it isn't there); \"none\" to take it out of one"),
     ]
 
     static var definitions: [[String: Any]] {
@@ -219,6 +220,9 @@ enum Tools {
                          "task_id": string("the toyl task it's for (it's then tied to it)"), "tentative": bool("adds \"?\" to the title"),
                          "dry_run": bool("check and describe it without adding")]),
                  idempotent: false),
+            tool("create_project", "new project",
+                 "Makes a project inside one of the owner's lists: a big piece of work (an essay, an event) whose tasks show under it. Tasks join it with add_task or update_task's project.",
+                 object(["list": string("the list (id or name)"), "name": string("the project's name")], required: ["list", "name"]), idempotent: true),
             tool("pull_canvas", "pull assignments from canvas",
                  "Reads the owner's Canvas (if they've connected it) and brings what's due into toyl: each new assignment, quiz or graded discussion becomes a task due when Canvas says, in the list named like its course (else the inbox), with its Canvas link in the notes and a canvas field. Due dates Canvas moved move the task; ones submitted on Canvas are checked off.",
                  object(["dry_run": bool("say what would change, without changing it")]), idempotent: false),
@@ -301,6 +305,7 @@ enum Tools {
             if a.keys.contains("duration_minutes") { r.duration = (a["duration_minutes"] as? NSNumber).map { "\($0.intValue)" } ?? "none" }
             r.addSubtasks = a["add_subtasks"] as? [String] ?? []
             r.checkSubtasks = a["complete_subtasks"] as? [String] ?? []
+            r.project = a["project"] as? String
             let task = try Actions.edit(try text(a, "id"), r)
             return ["task": Ops.json(task, in: try Actions.snapshot(), now: now)]
         case "complete_task":
@@ -398,6 +403,10 @@ enum Tools {
                 out["would_add"] = result.outcome.plans.map { CalendarPlanner.describe($0, calendars: result.calendars, rules: rules) }
             }
             return out
+        case "create_project":
+            guard let list = a["list"] as? String, let name = a["name"] as? String else { throw Ops.Failure("give a list and a name") }
+            let made = try Actions.addProject(list: list, name: name)
+            return ["list": made.list.displayName, "id": made.id, "name": name]
         case "pull_canvas":
             let dry = a["dry_run"] as? Bool ?? false
             let outcome = try Actions.pullCanvas(apply: !dry)
@@ -441,6 +450,7 @@ enum Tools {
         r.someday = a["someday"] as? Bool
         r.idea = a["idea"] as? Bool ?? false
         r.subtasks = a["subtasks"] as? [String] ?? []
+        r.project = a["project"] as? String
         if (r.text ?? "").isEmpty && (r.title ?? "").isEmpty { throw Ops.Failure("give text (quick add) or a title") }
         return r
     }

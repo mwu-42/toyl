@@ -86,6 +86,7 @@ enum Ops {
         if let doneAt = t.doneAt, t.done { out["done_at"] = iso(doneAt) }
         if snap.timedTasks.contains(t.id) { out["timer_running"] = true }
         if t.event != nil { out["on_calendar"] = true }
+        if let project = snap.list(t.listId)?.project(t.project) { out["project"] = project.name }
         if let email = t.email { out["from_email"] = ["account": email.account, "from": email.from, "subject": email.subject] }
         else if t.source == "email" { out["from_email"] = true }
         if t.isIdea { out["idea"] = true }
@@ -96,6 +97,11 @@ enum Ops {
         let open = snap.tasks.filter { $0.listId == list.id && !$0.done }
         var out: [String: Any] = ["id": list.id, "name": list.displayName, "open": open.count, "color": list.color]
         if list.sections.count > 1 { out["sections"] = list.sections.map { ["id": $0.id, "name": $0.name] } }
+        if !list.projects.isEmpty {
+            out["projects"] = list.projects.map { project in
+                ["id": project.id, "name": project.name, "open": open.filter { $0.project == project.id }.count] as [String: Any]
+            }
+        }
         if let group = list.group.flatMap({ id in snap.groups.first { $0.id == id } }) { out["group"] = group.name }
         if list.archived { out["archived"] = true }
         if !list.notes.isEmpty { out["notes"] = list.notes }

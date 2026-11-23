@@ -360,6 +360,7 @@ struct SidebarRow: View {
         case .list(let id):
             if let list = model.snap.list(id) {
                 Button("rename") { model.renaming = "list:" + id }
+                Button("new project") { model.newProject(in: id) }
                 Menu("color") {
                     ForEach(ListModel.palette, id: \.self) { color in
                         Button(color == list.color ? "● " + colorName(color) : colorName(color)) { model.setColor(color, list: id) }

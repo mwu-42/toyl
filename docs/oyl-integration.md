@@ -97,7 +97,8 @@ Keep every field you don't know. The format is the v3 format `TodStore.Boards` a
 
 - **Top level:** `toyl: 1`, `groups: [{id, name}]`, `filters: [{id, name, query}]`, `timers: [...]`,
   `timerLog: [...]`, `settings: {weekStart}` (0 sunday, 1 monday).
-- **List:** `group?` (a group id), `notes?`, `archived?`.
+- **List:** `group?` (a group id), `notes?`, `archived?`, `projects?: [{id, name, notes?}]` (the big pieces of work
+  in the list; a task's `project` names one of them).
   - The `inbox` and `dump` lists always exist; toyl shows `dump` as "ideas".
   - toyl lowercases these default names when it reads the file: Inbox, Brain dump, Unsorted, To do, In
     progress, Done, Next up, Waiting on.

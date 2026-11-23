@@ -74,6 +74,7 @@ struct TaskDetail: View {
                 when(now: now)
                 Hairline()
                 place
+                if let list = model.snap.list(task.listId) { projectRow(list) }
                 if let email = task.email { emailRow(email) }
                 tags
                 Hairline()
@@ -158,6 +159,26 @@ struct TaskDetail: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
             }
+        }
+    }
+
+    /// Its project, in its list: one to pick, none, or a new one.
+    private func projectRow(_ list: ListModel) -> some View {
+        DetailRow(label: "project", icon: "folder") {
+            Menu {
+                Button("none") { model.setProject(nil, list: list.id, for: [task.id]) }
+                ForEach(list.projects) { project in Button(model.display(project.name)) { model.setProject(project.id, list: list.id, for: [task.id]) } }
+                Divider()
+                Button("new project…") {
+                    let made = model.newProject(in: list.id)
+                    model.setProject(made, list: list.id, for: [task.id])
+                }
+            } label: {
+                MenuLabel(text: list.project(task.project).map { model.display($0.name) } ?? "none", faint: task.project == nil)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
         }
     }
 

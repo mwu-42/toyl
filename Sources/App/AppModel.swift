@@ -103,12 +103,15 @@ final class AppModel: ObservableObject {
         var offset: CGFloat
     }
 
-    /// How far a swipe goes before it does something.
+    /// How far a swipe goes before it does something: right a little, in progress; right a long
+    /// way, in progress with a timer going; left a long way (so it's not done by accident), delete.
     static let swipeReach: CGFloat = 70
+    static let swipeTimerReach: CGFloat = 190
+    static let swipeDeleteReach: CGFloat = 170
 
     /// A rubber band, as iOS pulls: free for the first `free` points, then harder and harder,
     /// never past `free + give`.
-    static func rubber(_ x: CGFloat, free: CGFloat = 80, give: CGFloat = 90) -> CGFloat {
+    static func rubber(_ x: CGFloat, free: CGFloat = 150, give: CGFloat = 110) -> CGFloat {
         let size = abs(x)
         guard size > free else { return x }
         let pulled = free + (1 - 1 / ((size - free) * 0.55 / give + 1)) * give
@@ -269,7 +272,11 @@ final class AppModel: ObservableObject {
         default:
             break
         }
-        if let group, let list = group.listId, !chosen { draft.listId = list; draft.sectionId = group.sectionId }
+        if let group, let list = group.listId, !chosen {
+            draft.listId = list
+            draft.sectionId = group.sectionId
+            draft.project = group.projectId
+        }
         // Not filed anywhere: autosort's guess, if it's sure and that's wanted.
         if draft.listId == nil, draft.newListName == nil, suggestWhileTyping, let guess = suggestion(for: draft.title) { draft.listId = guess.list.id }
         var id = ""
@@ -277,6 +284,7 @@ final class AppModel: ObservableObject {
             id = store.add(draft)
             selection = [id]
             anchor = id
+            editing = nil
         }
         // "/timer" in it: a timer on it straight away.
         if let ask = q.timer, let task = snap.task(id) {
@@ -493,12 +501,13 @@ final class AppModel: ObservableObject {
     }
 
     /// Drops: tasks dragged here (as "toyl:id,id"), or text from anywhere (a task a line).
-    func drop(_ items: [String], list: String, section: String?, before: String?) -> Bool {
+    func drop(_ items: [String], list: String, section: String?, before: String?, project: String?? = nil) -> Bool {
         for item in items where !item.hasPrefix("toyl-panel:") && !item.hasPrefix("toyl-event:") {
             if item.hasPrefix("toyl:") {
                 let ids = item.dropFirst(5).split(separator: ",").map(String.init).filter { snap.task($0) != nil }
                 guard !ids.isEmpty else { continue }
                 store.place(ids, list: list, section: section, before: before)
+                if let project { store.update(ids, "project") { _ in var p = TaskPatch(); p.project = .some(project); return p } }
             } else {
                 for line in item.split(whereSeparator: \.isNewline).map({ $0.trimmingCharacters(in: .whitespaces) }) where !line.isEmpty {
                     var draft = Quick.parse(line, lists: snap.lists, weekStart: snap.weekStart).draft(source: "drop")
@@ -528,6 +537,42 @@ final class AppModel: ObservableObject {
     }
 
     func setColor(_ color: String, list id: String) { store.change("color") { $0.updateList(id, color: color) } }
+
+    // MARK: - projects
+
+    /// A new project in a list, its name ready to type.
+    @discardableResult
+    func newProject(in list: String, name: String = "new project") -> String {
+        let id = UID.make()
+        withAnimation(.snappy(duration: 0.25)) { store.change("new project") { $0.addProject(to: list, name: name, id: id) } }
+        if place != .list(list), list != ListModel.inbox || place != .inbox { place = list == ListModel.inbox ? .inbox : .list(list) }
+        setGroup(.project, for: place)
+        renaming = "project:" + id
+        return id
+    }
+
+    func renameProject(_ id: String, in list: String, to name: String) {
+        let name = name.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        store.change("rename project") { $0.renameProject(id, in: list, to: name) }
+    }
+
+    func deleteProject(_ id: String, in list: String) {
+        withAnimation(.snappy(duration: 0.25)) { store.change("delete project") { $0.deleteProject(id, in: list) } }
+    }
+
+    /// Puts tasks in a project (nil: in none). They're moved into its list if they aren't in it.
+    func setProject(_ project: String?, list: String, for ids: [String]? = nil) {
+        let ids = ids ?? targets
+        withAnimation(.snappy(duration: 0.25)) {
+            store.update(ids, project == nil ? "no project" : "project") { _ in
+                var p = TaskPatch()
+                p.listId = list
+                p.project = .some(project)
+                return p
+            }
+        }
+    }
     func setGroup(_ group: String?, list id: String) { store.change("move list") { $0.updateList(id, group: .some(group)) } }
     func archive(_ id: String, _ on: Bool) { store.change(on ? "archive" : "unarchive") { $0.updateList(id, archived: on) } }
 
@@ -760,9 +805,11 @@ final class AppModel: ObservableObject {
             swallowMomentum = true
             let offset = swipe?.offset ?? track.dx
             withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { swipe = nil }
-            if offset >= Self.swipeReach {
+            if offset >= Self.swipeTimerReach {
+                startInProgress(track.id)
+            } else if offset >= Self.swipeReach {
                 toggleInProgress(track.id)
-            } else if offset <= -Self.swipeReach {
+            } else if offset <= -Self.swipeDeleteReach {
                 withAnimation(.easeInOut(duration: 0.22)) { store.delete([track.id]) }
                 selection.remove(track.id)
                 banner = "deleted · ⌘z puts it back"
@@ -794,6 +841,12 @@ final class AppModel: ObservableObject {
                 }
             }
         }
+    }
+
+    /// In progress, with a timer going on it (a long swipe right).
+    func startInProgress(_ id: String) {
+        if let task = snap.task(id), !isInProgress(task) { toggleInProgress(id) }
+        if let task = snap.task(id), timers.timer(for: id) == nil { timer(task) }
     }
 
     /// Whether a task's in its list's "in progress" section.

@@ -114,8 +114,10 @@ struct ViewMenu: View {
                 Button("autosort the inbox…") { model.showAutosort = true }
             }
             if case .list(let id) = place {
+                Button("new project") { model.newProject(in: id) }
                 Button("rename list") { model.renaming = "list:" + id }
             }
+            if place == .inbox { Button("new project") { model.newProject(in: ListModel.inbox) } }
             if !model.filter.isEmpty { Button("save this filter as a list") { model.saveFilter() } }
         } label: {
             Image(systemName: "line.3.horizontal.decrease.circle").font(.system(size: 15)).foregroundStyle(Theme.secondary)
@@ -264,7 +266,12 @@ struct TaskListView: View {
                                                         removal: .opacity.combined(with: .scale(scale: 0.97, anchor: .leading))))
                         }
                     }
-                    if groups.allSatisfy({ $0.tasks.isEmpty }) { EmptyPlace(model: model) }
+                    if groups.allSatisfy({ $0.tasks.isEmpty }), !groups.contains(where: \.big) { EmptyPlace(model: model) }
+                    if let list = listShown {
+                        Quiet(label: "new project", symbol: "folder.badge.plus", size: 13.5) { model.newProject(in: list) }
+                            .padding(.horizontal, 12)
+                            .padding(.top, 24)
+                    }
                     Color.clear.frame(height: 60)
                         .contentShape(Rectangle())
                         .onTapGesture { model.selection = []; model.editing = nil }
@@ -277,9 +284,20 @@ struct TaskListView: View {
             .focusEffectDisabled()
             .onKeyPress(phases: .down) { press in handle(press) }
             .onChange(of: model.focusList) { focused = true }
+            .onReceive(NotificationCenter.default.publisher(for: .toylTyping)) { _ in focused = false }
             .onChange(of: model.anchor) { _, id in
                 if let id { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) } }
             }
+        }
+    }
+
+    /// The list being looked at (for its "new project"), when it's one list grouped by project.
+    private var listShown: String? {
+        guard model.groupMode(model.place) == .project, model.filter.isEmpty else { return nil }
+        switch model.place {
+        case .list(let id): return id
+        case .inbox: return ListModel.inbox
+        default: return nil
         }
     }
 
@@ -318,12 +336,18 @@ struct GroupHeading: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            if renaming, let list = group.listId, let section = group.sectionId {
-                RenameField(name: group.title ?? "") { name in model.store.change("rename section") { $0.renameSection(section, in: list, to: name) } } done: { renaming = false }
+            if let project = group.projectId, let list = group.listId, renaming || model.renaming == "project:" + project {
+                RenameField(name: group.title ?? "") { name in model.renameProject(project, in: list, to: name) } done: {
+                    renaming = false
+                    if model.renaming == "project:" + project { model.renaming = nil }
+                }
+                .font(Theme.font(21, bold: true))
             } else {
+                if group.big { Image(systemName: "folder").font(.system(size: 14)).foregroundStyle(Theme.accent) }
                 Text(group.title.map(model.display) ?? "")
-                    .font(Theme.font(15, bold: true))
+                    .font(Theme.font(group.big ? 21 : 15, bold: true))
                     .foregroundStyle(Theme.ink)
+                    .onTapGesture(count: 2) { if group.big { renaming = true } }
                 if let subtitle = group.subtitle {
                     Text(subtitle).font(Theme.meta).foregroundStyle(Theme.secondary)
                 }
@@ -339,16 +363,20 @@ struct GroupHeading: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.top, 20)
-        .padding(.bottom, 6)
+        .padding(.top, group.big ? 30 : 20)
+        .padding(.bottom, group.big ? 8 : 6)
         .overlay(alignment: .bottom) { Rectangle().fill(targeted ? Theme.accent : Theme.rule).frame(height: targeted ? 2 : 1).padding(.horizontal, 10) }
         .contentShape(Rectangle())
         .dropDestination(for: String.self) { items, _ in
             guard let list = group.listId else { return false }
-            return model.drop(items, list: list, section: group.sectionId, before: nil)
+            return model.drop(items, list: list, section: group.sectionId, before: nil, project: group.big ? .some(group.projectId) : nil)
         } isTargeted: { targeted = $0 }
         .contextMenu {
             if group.listId != nil { Button("new task here") { withAnimation(.snappy(duration: 0.2)) { model.addingTo = group.id } } }
+            if let project = group.projectId, let list = group.listId {
+                Button("rename project") { renaming = true }
+                Button("delete project (its tasks stay in the list)") { model.deleteProject(project, in: list) }
+            }
         }
     }
 }

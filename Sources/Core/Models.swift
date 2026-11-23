@@ -148,6 +148,20 @@ struct MailLink: Equatable, Hashable {
     }
 }
 
+/// A project inside a list: a big piece of work, its tasks under it.
+struct ProjectModel: Identifiable, Equatable, Hashable {
+    let id: String
+    var name: String
+    var notes: String
+
+    init?(entry: Any) {
+        guard let e = entry as? [String: Any], let id = e["id"] as? String else { return nil }
+        self.id = id
+        name = e["name"] as? String ?? ""
+        notes = e["notes"] as? String ?? ""
+    }
+}
+
 /// The Canvas assignment a task is for: its id there (kind and number), its course, and its page.
 struct CanvasLink: Equatable, Hashable {
     let id: String          // "assignment:123", "quiz:45", "discussion_topic:67"
@@ -203,6 +217,8 @@ struct TaskModel: Identifiable, Equatable, Hashable {
     var isFromEmail: Bool { email != nil || source == "email" }
     /// The Canvas assignment it's for, if it came from Canvas.
     var canvas: CanvasLink?
+    /// The project (in its list) it's part of, if any.
+    var project: String?
     /// The task this one came back from, if it's the next of a repeating one.
     var repeatOf: String?
 
@@ -262,6 +278,7 @@ struct TaskModel: Identifiable, Equatable, Hashable {
         source = e["source"] as? String
         email = MailLink(entry: e["email"])
         canvas = CanvasLink(entry: e["canvas"])
+        project = TaskModel.text(e["project"])
         repeatOf = e["repeatOf"] as? String
     }
 
@@ -294,6 +311,8 @@ struct ListModel: Identifiable, Equatable, Hashable {
     var name: String
     var color: String
     var sections: [SectionModel]
+    /// Its projects: the big pieces of work inside it (an essay, a club event), each holding tasks.
+    var projects: [ProjectModel]
     var group: String?
     var notes: String
     var archived: Bool
@@ -337,11 +356,14 @@ struct ListModel: Identifiable, Equatable, Hashable {
             guard let column = column as? [String: Any], let id = column["id"] as? String else { return nil }
             return SectionModel(id: id, name: column["name"] as? String ?? "")
         }
+        projects = (e["projects"] as? [Any] ?? []).compactMap { ProjectModel(entry: $0) }
         group = TaskModel.text(e["group"])
         notes = e["notes"] as? String ?? ""
         archived = e["archived"] as? Bool ?? false
         createdAt = Moment.date(e["createdAt"])
     }
+
+    func project(_ id: String?) -> ProjectModel? { id.flatMap { id in projects.first { $0.id == id } } }
 
     /// "#rrggbb", lowercased, if it is one.
     static func hex(_ value: Any?) -> String? {

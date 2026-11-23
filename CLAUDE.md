@@ -99,7 +99,10 @@ It's the v3 format Oyl's to-do store reads, grown:
   calendar. With the page hidden, the calendar (else the description) takes the spare width (`fillingPanel`).
 - Quick entry from anywhere is ⌘⌥X. The calendar has no shortcut of its own; ⌘= and ⌘- (and a pinch) zoom its
   hours (`calendarZoom`) about the pointer or the pinch.
-- **Swipes rubber-band** (`AppModel.rubber`): free for 80 points, then harder, never past 170.
+- **Swipes rubber-band** (`AppModel.rubber`): free for 150 points, then harder, never past 260. Right 70: in
+  progress; right 190: in progress and a timer; left 170: delete.
+- **Projects** live in a list (`list.projects: [{id, name}]`, `task.project`): big headings in a list's view
+  (group by project, the default for lists). Moving a task to another list takes it out of its project.
 - **Calendar**: day, week and month (`CalendarMode`); the today button always shows; events stay clearly
   colored (past ones barely faded). Dragging an event onto a task ties them one way (`event.follows`): the
   task takes the event's day, time, length and list, and toyl never writes to that event.

@@ -71,7 +71,10 @@ enum PhonePage {
     li.task.left .behind { display: flex; justify-content: flex-end; background: rgba(168, 90, 80, 0.6); }
     li.task.right.reached .behind { background: var(--accent); }
     li.task.left.reached .behind { background: var(--late); }
-    li.task.right .behind .del, li.task.left .behind .prog { display: none; }
+    li.task.right .behind .del, li.task.left .behind .prog, li.task .behind .timing-label { display: none; }
+    li.task.right.timing .behind { background: rgba(29, 29, 28, 0.8); }
+    li.task.right.timing .behind .prog { display: none; }
+    li.task.right.timing .behind .timing-label { display: inline; }
     .circle { flex: none; width: 24px; height: 24px; margin-top: 1px; border-radius: 50%; border: 1.4px solid var(--faint); background: transparent; padding: 0; position: relative; transition: transform 0.2s; }
     .circle.done { background: var(--accent); border-color: var(--accent); transform: scale(1.08); }
     .circle.done::after { content: ""; position: absolute; left: 7.5px; top: 3.5px; width: 6px; height: 11px; border: solid white; border-width: 0 2.2px 2.2px 0; transform: rotate(45deg); }
@@ -412,7 +415,7 @@ enum PhonePage {
     function taskRow(task) {
       const row = el("li", "task");
       const behind = el("div", "behind");
-      behind.append(el("span", "prog", task.progress ? "back to to-do" : "in progress"), el("span", "del", "delete"));
+      behind.append(el("span", "prog", task.progress ? "back to to-do" : "in progress"), el("span", "timing-label", "in progress + timer"), el("span", "del", "delete"));
       const front = el("div", "front");
       const circle = el("button", "circle");
       circle.setAttribute("aria-label", "check off");
@@ -422,6 +425,7 @@ enum PhonePage {
       const meta = el("div", "meta");
       const parts = [];
       if (task.progress) parts.push(el("span", "progress", "◐ in progress"));
+      if (task.project) parts.push(document.createTextNode("▸ " + task.project.toLowerCase()));
       if (task.when) parts.push(el("span", task.late ? "late" : "", task.when));
       if (task.email) parts.push(document.createTextNode("✉ email"));
       if (task.sublist) parts.push(document.createTextNode(`${task.sublist} in its sublist`));
@@ -447,9 +451,10 @@ enum PhonePage {
       return row;
     }
 
-    // A rubber band: free at first, then harder and harder to pull, never past 170 points.
+    // A rubber band: free at first, then harder and harder to pull, never past 260 points.
+    // Right 80: in progress; right 190: in progress with a timer; left 170: delete.
     function rubber(x) {
-      const size = Math.abs(x), free = 80, give = 90;
+      const size = Math.abs(x), free = 150, give = 110;
       if (size <= free) return x;
       const pulled = free + (1 - 1 / ((size - free) * 0.55 / give + 1)) * give;
       return x < 0 ? -pulled : pulled;
@@ -476,20 +481,24 @@ enum PhonePage {
         front.style.transform = `translateX(${dx}px)`;
         row.classList.toggle("right", dx > 0);
         row.classList.toggle("left", dx < 0);
-        row.classList.toggle("reached", Math.abs(dx) >= 80);
+        row.classList.toggle("reached", dx >= 80 || dx <= -170);
+        row.classList.toggle("timing", dx >= 190);
       }, { passive: false });
       const finish = () => {
         front.style.transition = "transform 0.22s";
-        if (sideways && dx >= 80) {
+        if (sideways && dx >= 190) {
           front.style.transform = "";
-          progress(task);
-        } else if (sideways && dx <= -80) {
+          progress(task, true);
+        } else if (sideways && dx >= 80) {
+          front.style.transform = "";
+          progress(task, false);
+        } else if (sideways && dx <= -170) {
           front.style.transform = "translateX(-110%)";
           remove(task, row, front);
         } else {
           front.style.transform = "";
         }
-        setTimeout(() => row.classList.remove("left", "right", "reached"), 230);
+        setTimeout(() => row.classList.remove("left", "right", "reached", "timing"), 230);
         touching = false;
         if (stale) { stale = false; setTimeout(drawGroups, 260); }
       };
@@ -497,9 +506,9 @@ enum PhonePage {
       row.addEventListener("touchcancel", finish);
     }
 
-    async function progress(task) {
+    async function progress(task, timer) {
       try {
-        const done = await api("/api/do", { do: "progress", id: task.id });
+        const done = await api("/api/do", { do: "progress", id: task.id, timer });
         show(done.state);
         say(done.said);
       } catch (error) { if (error.said) say(error.message); }

@@ -125,6 +125,9 @@ struct TaskRow: View {
         if model.isInProgress(task), group.sectionId != task.sectionId {
             parts.insert(Text(Image(systemName: "circle.lefthalf.filled")).foregroundColor(Theme.accent) + Text(" in progress").foregroundColor(Theme.accent), at: 0)
         }
+        if let project = model.snap.list(task.listId)?.project(task.project), group.projectId != project.id {
+            parts.append(Text(Image(systemName: "folder")) + Text(" " + model.display(project.name)))
+        }
         if task.isFromEmail { parts.append(Text(Image(systemName: "envelope")) + Text(" email")) }
         if let repeats = task.repeats { parts.append(Text(Image(systemName: "arrow.2.squarepath")) + Text(" " + repeats.phrase)) }
         if task.spent >= 60 { parts.append(Text(Image(systemName: "timer")) + Text(" " + Format.spent(task.spent))) }
@@ -219,6 +222,19 @@ struct TaskMenu: View {
         }
         Button(tasks.allSatisfy(\.pinned) ? "unpin" : "pin to the top") { model.togglePin(ids) }
         Button(tasks.allSatisfy(\.someday) ? "back from ideas" : "to ideas (put off)") { model.toggleSomeday(ids) }
+        if let one, let list = model.snap.list(one.listId) {
+            Menu("project") {
+                Button(one.project == nil ? "✓ none" : "none") { model.setProject(nil, list: list.id, for: ids) }
+                ForEach(list.projects) { project in
+                    Button((one.project == project.id ? "✓ " : "") + model.display(project.name)) { model.setProject(project.id, list: list.id, for: ids) }
+                }
+                Divider()
+                Button("new project…") {
+                    let made = model.newProject(in: list.id)
+                    model.setProject(made, list: list.id, for: ids)
+                }
+            }
+        }
         Menu("move to") {
             ForEach(model.snap.sidebarOrder) { list in
                 Button(model.display(list.displayName)) { model.move(ids, to: list.id) }
@@ -324,17 +340,18 @@ struct SwipeBehind: View {
     let inProgress: Bool
 
     var body: some View {
-        let reached = abs(offset) >= AppModel.swipeReach
+        let timing = offset >= AppModel.swipeTimerReach
+        let reached = offset > 0 ? offset >= AppModel.swipeReach : -offset >= AppModel.swipeDeleteReach
         ZStack {
             if offset > 0 {
                 HStack(spacing: 6) {
-                    Image(systemName: inProgress ? "arrow.uturn.backward" : "circle.lefthalf.filled")
-                    Text(inProgress ? "back to to-do" : "in progress").font(Theme.font(14))
+                    Image(systemName: timing ? "timer" : inProgress ? "arrow.uturn.backward" : "circle.lefthalf.filled")
+                    Text(timing ? "in progress + timer" : inProgress ? "back to to-do" : "in progress").font(Theme.font(14))
                 }
                 .foregroundStyle(.white)
                 .padding(.leading, 18)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 7).fill(Theme.accent.opacity(reached ? 1 : 0.6)))
+                .background(RoundedRectangle(cornerRadius: 7).fill(timing ? Theme.ink.opacity(0.8) : Theme.accent.opacity(reached ? 1 : 0.6)))
             } else if offset < 0 {
                 HStack(spacing: 6) {
                     Text("delete").font(Theme.font(14))
@@ -347,6 +364,7 @@ struct SwipeBehind: View {
             }
         }
         .animation(.easeOut(duration: 0.12), value: reached)
+        .animation(.easeOut(duration: 0.12), value: timing)
     }
 }
 

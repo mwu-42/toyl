@@ -126,9 +126,10 @@ struct PlainField: NSViewRepresentable {
 
         func controlTextDidEndEditing(_ notification: Notification) { parent.onEnd?() }
 
-        /// The caret in ink, not the system's blue.
+        /// The caret in ink, not the system's blue; and the list told it hasn't the keys now.
         func controlTextDidBeginEditing(_ notification: Notification) {
             ((notification.object as? NSTextField)?.currentEditor() as? NSTextView)?.insertionPointColor = Theme.nsInk
+            NotificationCenter.default.post(name: .toylTyping, object: nil)
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
@@ -151,13 +152,20 @@ struct PlainField: NSViewRepresentable {
     }
 }
 
-/// A text field whose caret is ink, not the system's blue, from the moment it has the keys.
+/// A text field whose caret is ink, not the system's blue, from the moment it has the keys (and
+/// the list's told it hasn't them).
 final class InkField: NSTextField {
     override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()
         (currentEditor() as? NSTextView)?.insertionPointColor = Theme.nsInk
+        if became { NotificationCenter.default.post(name: .toylTyping, object: nil) }
         return became
     }
+}
+
+extension Notification.Name {
+    /// A field's got the keys: the list lets go of them (so Return adds, rather than editing a task).
+    static let toylTyping = Notification.Name("toyl.typing")
 }
 
 /// A task's box: a ring, gold and ticked once it's done (as Notes' checklists are). Late doesn't
