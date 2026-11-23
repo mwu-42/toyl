@@ -51,6 +51,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    /// Remembers whether the window was open, so an update (which quits toyl and opens it again)
+    /// leaves it as it was.
+    func applicationWillTerminate(_ notification: Notification) {
+        let open = window?.isVisible == true && !NSApp.isHidden
+        UserDefaults.standard.set(open, forKey: "relaunch.windowOpen")
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "relaunch.at")
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showMain()
         return true
@@ -75,7 +83,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         window.setContentSize(NSSize(width: 1180, height: 760))
         if !window.setFrameUsingName("toyl.main") { window.center() }
         window.setFrameAutosaveName("toyl.main")
-        window.makeKeyAndOrderFront(nil)
+        // Opened again straight after quitting (an update): the window as it was then.
+        let defaults = UserDefaults.standard
+        let relaunched = Date().timeIntervalSince1970 - defaults.double(forKey: "relaunch.at") < 60
+        defaults.removeObject(forKey: "relaunch.at")
+        if !relaunched || defaults.object(forKey: "relaunch.windowOpen") as? Bool ?? true { window.makeKeyAndOrderFront(nil) }
         model.watchSwipes()
         roomWatch = model.$showCalendar.dropFirst().filter { $0 }.map { _ in () }
             .merge(with: model.$calendarMode.dropFirst().map { _ in () })

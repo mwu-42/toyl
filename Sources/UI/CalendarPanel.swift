@@ -876,7 +876,7 @@ private struct TaskBlock: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture { model.reveal(task: task.id) }
-        .draggable("toyl:" + task.id)
+        .draggable("toyl:" + task.id) { TaskDragPreview(title: model.display(task.title)) }
         .contextMenu {
             Button("show task") { model.reveal(task: task.id) }
             Button("add to google calendar…") { model.addToCalendar(task) }
@@ -935,7 +935,7 @@ private struct AllDaySection: View {
                             }
                             .contentShape(Rectangle())
                             .onTapGesture { model.reveal(task: task.id) }
-                            .draggable("toyl:" + task.id)
+                            .draggable("toyl:" + task.id) { TaskDragPreview(title: model.display(task.title)) }
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }

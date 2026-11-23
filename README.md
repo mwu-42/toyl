@@ -13,8 +13,8 @@ except what you type.
 
 It needs macOS 26 and the Xcode command line tools (`xcode-select --install`). There's no Xcode
 project. The first build makes a local signing certificate in its own keychain, so macOS remembers
-toyl's permissions across rebuilds. If toyl is open when you build, it reopens quietly, in the
-background with its window hidden, and never jumps in front of what you're doing.
+toyl's permissions across rebuilds. If toyl is open when you build, it reopens as it was, its window
+open behind what you're doing (in front only if you were using toyl), never taking the focus.
 
 ## What's in it
 

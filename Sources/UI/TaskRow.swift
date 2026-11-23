@@ -72,7 +72,9 @@ struct TaskRow: View {
         }
         .onTapGesture { click() }
         .contextMenu { TaskMenu(model: model, ids: menuTargets) }
-        .draggable("toyl:" + dragTargets.joined(separator: ","))
+        .draggable("toyl:" + dragTargets.joined(separator: ",")) {
+            TaskDragPreview(title: model.display(task.title), count: dragTargets.count)
+        }
         .dropDestination(for: String.self) { items, _ in
             // An event from the calendar: this task follows it.
             if items.contains(where: { $0.hasPrefix("toyl-event:") }) { return model.linkEvent(items, to: task.id) }
@@ -351,5 +353,32 @@ struct SwipeBehind: View {
             }
         }
         .animation(.easeOut(duration: 0.12), value: reached)
+    }
+}
+
+/// What's dragged when a task is: a small pill (its circle and title, and how many more if
+/// several go), not the whole wide row.
+struct TaskDragPreview: View {
+    let title: String
+    var count = 1
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Circle().strokeBorder(Theme.secondary, lineWidth: 1.2).frame(width: 12, height: 12)
+            Text(title).font(Theme.font(14.5)).foregroundStyle(Theme.ink).lineLimit(1).truncationMode(.tail)
+                .frame(maxWidth: 220, alignment: .leading)
+                .fixedSize(horizontal: true, vertical: false)
+            if count > 1 {
+                Text("+\(count - 1)").font(Theme.font(12.5, bold: true)).foregroundStyle(.white)
+                    .padding(.horizontal, 6).padding(.vertical, 1)
+                    .background(Capsule().fill(Theme.accent))
+            }
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(Theme.paper))
+        .overlay(Capsule().strokeBorder(Theme.rule, lineWidth: 1))
+        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+        .padding(8)
     }
 }

@@ -73,8 +73,11 @@ echo "Built $APP"
 
 # The app (not a command-line toyl, or Claude's MCP server, which run as "toyl mcp").
 running=0
+front=0
 if pgrep -f 'toyl\.app/Contents/MacOS/toyl$' >/dev/null; then
     running=1
+    # Whether toyl was the app in use (lsappinfo needs no permission).
+    lsappinfo info -only bundleid "$(lsappinfo front)" 2>/dev/null | grep -q '"local.toyl"' && front=1
     osascript -e 'quit app id "local.toyl"' >/dev/null 2>&1 || true
     for _ in $(seq 1 50); do pgrep -f 'toyl\.app/Contents/MacOS/toyl$' >/dev/null || break; sleep 0.1; done
     # Any copy still open (there should only ever be one, but quit them all).
@@ -93,10 +96,11 @@ rm -rf "$APP"
 "$LSREGISTER" -f "$INSTALLED" >/dev/null 2>&1 || true
 echo "Installed $INSTALLED (and the toyl command in ~/.local/bin)"
 
-# Opened again quietly if it was open (in the background, its window hidden, so it never jumps
-# in front of what you're doing); with --run, opened in front.
-if [[ "${1:-}" == "--run" ]]; then
+# Opened again as it was if it was open: its window back where it was (or not, if it was closed),
+# in front only if toyl was the app in use, otherwise behind what you're doing, never taking the
+# focus. With --run, opened in front.
+if [[ "${1:-}" == "--run" || $front -eq 1 ]]; then
     open "$INSTALLED"
 elif [[ $running -eq 1 ]]; then
-    open -g -j "$INSTALLED"
+    open -g "$INSTALLED"
 fi
