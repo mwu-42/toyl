@@ -19,11 +19,18 @@ background with its window hidden, and never jumps in front of what you're doing
 ## What's in it
 
 - 🗂 **places**: all · inbox · today · ideas · timers, then your lists (in groups), tags, saved filters. ⌘1–5. it opens on all.
-- 📅 **calendar panel** (⌥⌘C, or the calendar button): a day of google calendar beside your list.
-  - the week on top · all-day events · the hours, with your timed tasks dashed among the events
+- 📅 **calendar panel** (⌥⌘C, or the calendar button): google calendar beside your list, as a **day, week or month**.
+  - day: the week on top · all-day events · the hours, with your timed tasks dashed among the events
+  - week: seven days of hours side by side · month: each day's events and tasks; click a day to open it
   - drop a task on an hour to do it then, or on a day to move it · double-click an hour for a new event
-  - click an event for its details · ⌥⌘[ and ⌥⌘] for the day before and after
-- ↔️ **panels resize**: drag the line between them · double-click it for the usual width.
+  - **drag an event onto a task** to tie them: the task takes the event's day, time and list, and follows it if it moves. the event itself is never changed.
+  - click an event for its details · ⌥⌘[ and ⌥⌘] for earlier and later · today is always one click
+- ↔️ **panels**: calendar, to-dos, details, in that order at first.
+  - drag a panel's grip (≡, at its top) onto another to swap them · right-click the grip to move it left or right
+  - drag the line between panels to resize them · double-click it for the usual width
+- 👆 **swipe a task** (two fingers on the trackpad, as in Mail; or a finger on the phone)
+  - left: into its list's **in progress** (again to take it back out)
+  - right: delete (⌘z puts it back)
 - ✉️ **important email**: gmail and outlook, pulled into the inbox and flagged ✉ email. below.
 - ☑️ **sublists**: a task's sublist shows right under it. select the task to add to it · ✨ "break it down" makes one with apple intelligence.
 - 💡 **ideas**: loose ideas (`?` first) and anything put off (`/idea`, or drag it onto ideas). it keeps its list.
@@ -33,7 +40,7 @@ background with its window hidden, and never jumps in front of what you're doing
   - `every week` repeats · `~30m` its timer's length · `!` pin · ` // ` notes
   - `/timer`, `/timer 30m`, `/stopwatch` start a timer on it
 - ⏱ **timers on any task**: hover a task and click ⏱ (right-click it for lengths), or pick one in its details: 10m · 30m · 1h · 6h · 24h, or type one. time adds up on the task.
-- 🔗 **links in notes are cards**: the page's icon and title; click to open. small ones show on the task's row too.
+- 🔗 **links in notes are cards** in the details: the page's icon and title; click to open. rows stay plain.
 - ➕ **every list has its heading in all**, empty or not, with a + on the right to add straight into it.
 - 🪄 **autosort**: files new tasks where your others go (on the mac); ⌥⌘A does the inbox.
 - 🔎 **filters**: `#tag`, `in:cs`, `due:week`, `is:late`… save one as a list.
@@ -102,10 +109,11 @@ In Google Cloud, also turn on the Gmail API for the same project.
 
 ## iPhone
 
-toyl on your phone is made for adding tasks and running timers, served by toyl on your Mac:
+toyl on your phone is made for adding tasks and running timers, served by toyl on your Mac (no calendar on it):
 - ➕ a big "new task" field first, read the way quick add reads it (`fri 5pm`, `#cs`, `/timer 30m`), with your lists to file into
 - ⏱ big buttons for 10m · 30m · 1h · 6h · 24h and a stopwatch, on anything or on a task; what's running, to pause, +5 or stop
-- ☀️ today's tasks, to check off or time
+- 🗂 your lists and their tasks (tap a list to fold it), to check off or time
+  - swipe left: in progress · swipe right: delete (with undo)
 - ✉️ added while the Mac can't be reached: kept on the phone, sent when it can
 
 **Setting it up, once:**
@@ -124,7 +132,7 @@ tailnet; settings › iphone › forget unpairs them all.
 | way in | for | how |
 | --- | --- | --- |
 | MCP server (`toyl mcp`) | Claude Desktop, Claude Code, Muse Code | settings › agents and ai › link, or `toyl connect claude-code` |
-| the `toyl` command | anything with a shell | `toyl today`, `toyl add "…"`, `toyl cal add …`, `--json` on everything |
+| the `toyl` command | anything with a shell | `toyl today`, `toyl add "…"`, `toyl cal add …`, `toyl merge stack`, `--json` on everything |
 | toyl.md | anything that reads files | the whole list as Markdown. Edit it and toyl takes the edits in |
 | Google Calendar | Instinct, Muse, Claude | events toyl adds; "todo: …" events become tasks |
 | `toyl://` links | Shortcuts, Raycast | `toyl://add?text=…`, `toyl://task/<id>`, `toyl://show/today`, `toyl://quick` |

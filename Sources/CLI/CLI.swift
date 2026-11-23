@@ -6,7 +6,7 @@ enum CLI {
     static let commands: Set<String> = [
         "help", "today", "inbox", "upcoming", "anytime", "all", "someday", "logbook", "ideas", "ls", "list", "search", "show",
         "add", "idea", "done", "undo", "undone", "rm", "delete", "edit", "lists", "tags", "new-list", "agenda", "overview",
-        "timer", "timers", "autosort", "md", "json", "path", "agents", "open", "mcp", "version", "connect", "google", "cal", "mail",
+        "timer", "timers", "autosort", "md", "json", "path", "agents", "open", "mcp", "version", "connect", "google", "cal", "mail", "merge",
         "--help", "-h", "--version",
     ]
 
@@ -52,6 +52,7 @@ enum CLI {
             case "connect": try connect(args)
             case "google": try google(args)
             case "mail": try mail(args)
+            case "merge": try merge(args)
             case "cal":
                 switch try cal(args) {
                 case .needs: return 3
@@ -365,6 +366,22 @@ enum CLI {
         }
     }
 
+    /// `toyl merge <list> [into]`: one list folded into another (the inbox, if none's named): its
+    /// tasks move over and the list goes.
+    private static func merge(_ args: Args) throws {
+        let snap = try Actions.snapshot()
+        guard let ref = args.positional.first, let from = Ops.list(ref, in: snap) else { throw Ops.Failure("which list? toyl merge <list> [into]") }
+        let into = try args.positional.dropFirst().first.map { name -> ListModel in
+            guard let list = Ops.list(name, in: snap) else { throw Ops.Failure("no list called “\(name)”") }
+            return list
+        } ?? snap.list(ListModel.inbox)!
+        guard from.id != into.id, from.id != ListModel.inbox, from.id != ListModel.dump else { throw Ops.Failure("can't fold \(from.displayName) into \(into.displayName)") }
+        let moving = snap.tasks.filter { $0.listId == from.id }.count
+        _ = try Actions.save { $0.mergeList(from.id, into: into.id) }
+        out(["merged": from.displayName, "into": into.displayName, "tasks": moving], args,
+            text: "folded \(from.displayName) into \(into.displayName) (\(moving) task\(moving == 1 ? "" : "s"))")
+    }
+
     /// Pulling important email: `toyl mail` (how it's set), `toyl mail pull [--dry-run]`,
     /// `toyl mail gmail on|off`, `toyl mail outlook client <id> [tenant]|connect|disconnect|on|off`,
     /// `toyl mail ask on|off`.
@@ -575,6 +592,7 @@ enum CLI {
           toyl                         what's on today
           toyl all|today|inbox|ideas [filter]   (and upcoming, logbook)
           toyl mail [pull [--dry-run]|gmail on|off|outlook client <id>|outlook connect|ask on|off]
+          toyl merge <list> [into]        fold a list into another (the inbox, if none)
           toyl ls <filter>             e.g. toyl ls "#school due:week", toyl ls essay is:all
           toyl show <id|title>
           toyl add <text>              e.g. toyl add "essay draft fri 5pm #cs ~2h /timer 25m"

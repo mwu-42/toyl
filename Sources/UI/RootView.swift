@@ -1,10 +1,12 @@
 import SwiftUI
 
-/// The window: the sidebar, the list, and the selected task's details, side by side on paper.
+/// The window: the sidebar, then the calendar, the to-dos and the selected task's details, side
+/// by side on paper, in whatever order they've been dragged into (calendar first, at first).
 struct RootView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
+        let shown = model.panelOrder.filter(model.isShown)
         HStack(spacing: 0) {
             if model.showSidebar {
                 SidebarView(model: model)
@@ -12,22 +14,18 @@ struct RootView: View {
                     .background(Theme.sidebar)
                 PanelDivider(width: $model.sidebarWidth, range: 180...380, grows: .right, standard: 238)
             }
-            MainPane(model: model)
-                .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
-            if model.showInspector, model.place != .timers {
-                PanelDivider(width: $model.inspectorWidth, range: 260...520, grows: .left, standard: 322)
-                InspectorView(model: model)
-                    .frame(width: model.inspectorWidth)
-                    .frame(maxHeight: .infinity)
-                    .background(Theme.paper)
+            ForEach(Array(shown.enumerated()), id: \.element) { index, panel in
+                if index > 0 { divider(between: shown[index - 1], and: panel) }
+                view(of: panel)
+                    .overlay(alignment: .top) { PanelGrip(model: model, panel: panel) }
+                    .transition(.opacity)
             }
-            if model.showCalendar {
-                PanelDivider(width: $model.calendarWidth, range: 240...560, grows: .left, standard: 300)
-                CalendarPanel(model: model, width: model.calendarWidth)
-                    .frame(width: model.calendarWidth)
-                    .frame(maxHeight: .infinity)
-                    .background(Theme.paper)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+        }
+        .overlay(alignment: .topLeading) {
+            if !model.showSidebar {
+                Quiet(label: "", symbol: "sidebar.left", size: 15) { model.showSidebar = true }
+                    .padding(.leading, 84).padding(.top, 8)
+                    .help("show the sidebar")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -37,6 +35,82 @@ struct RootView: View {
         .foregroundStyle(Theme.ink)
         .tint(Theme.accent)
         .sheet(item: $model.calendarForm) { form in AddToCalendarView(model: model, form: form) }
+    }
+}
+
+extension RootView {
+    @ViewBuilder func view(of panel: Panel) -> some View {
+        switch panel {
+        case .tasks:
+            MainPane(model: model)
+                .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
+        case .details:
+            InspectorView(model: model)
+                .frame(width: model.inspectorWidth)
+                .frame(maxHeight: .infinity)
+                .background(Theme.paper)
+        case .calendar:
+            CalendarPanel(model: model, width: model.calendarWidth)
+                .frame(width: model.calendarWidth)
+                .frame(maxHeight: .infinity)
+                .background(Theme.paper)
+        }
+    }
+
+    /// The line between two panels resizes whichever of them has a width of its own (the to-dos
+    /// take what's left).
+    @ViewBuilder func divider(between left: Panel, and right: Panel) -> some View {
+        let sized = left == .tasks ? right : left
+        let grows: PanelDivider.Side = left == .tasks ? .left : .right
+        switch sized {
+        case .details:
+            PanelDivider(width: $model.inspectorWidth, range: 260...520, grows: grows, standard: 322)
+        case .calendar:
+            PanelDivider(width: Binding(get: { model.calendarWidth }, set: { model.calendarWidth = $0 }), range: 240...1000, grows: grows,
+                         standard: model.calendarMode.standardWidth)
+        case .tasks:
+            Rectangle().fill(Theme.rule).frame(width: 1)
+        }
+    }
+}
+
+/// A panel's grip, at its top: drag it onto another panel's to swap places; right-click to move
+/// it left or right.
+struct PanelGrip: View {
+    @ObservedObject var model: AppModel
+    let panel: Panel
+    @Local private var hovering = false
+    @Local private var targeted = false
+
+    var body: some View {
+        ZStack {
+            Color.clear
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(targeted ? Theme.accent : hovering ? Theme.secondary : Theme.faint.opacity(0.55))
+                .frame(width: 44, height: 18)
+                .background(Capsule().fill(targeted ? Theme.selection : hovering ? Theme.hover : .clear))
+                .contentShape(Rectangle())
+                .onHover { hovering = $0 }
+                .draggable("toyl-panel:" + panel.rawValue) {
+                    Text(panel.name).font(Theme.font(14)).padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Capsule().fill(Theme.field))
+                }
+                .contextMenu {
+                    Button("move \(panel.name) left") { model.nudgePanel(panel, -1) }
+                    Button("move \(panel.name) right") { model.nudgePanel(panel, 1) }
+                    Divider()
+                    Button("calendar, to-dos, details") { withAnimation(.snappy(duration: 0.25)) { model.panelOrder = Panel.standard } }
+                }
+                .help("drag to move \(panel.name)")
+        }
+        .frame(height: 22)
+        .padding(.top, 4)
+        .dropDestination(for: String.self) { items, _ in
+            guard let item = items.first(where: { $0.hasPrefix("toyl-panel:") }), let moved = Panel(rawValue: String(item.dropFirst(11))) else { return false }
+            model.movePanel(moved, to: panel)
+            return true
+        } isTargeted: { targeted = $0 }
     }
 }
 

@@ -23,7 +23,8 @@ enum Picture {
             let mode = arguments.count >= 3 ? arguments[2] : ""
             if mode.hasPrefix("calendar") {
                 model.showCalendar = true
-                if mode.hasPrefix("calendar:") { model.calendarDay = String(mode.dropFirst(9)) }
+                let what = mode.hasPrefix("calendar:") ? String(mode.dropFirst(9)) : ""
+                if let chosen = CalendarMode(rawValue: what) { model.calendarMode = chosen } else if !what.isEmpty { model.calendarDay = what }
             }
             let size = mode == "form" ? NSSize(width: 540, height: 640) : mode == "settings" ? NSSize(width: 620, height: 1400)
                 : mode.hasPrefix("calendar") ? NSSize(width: 1480, height: 820) : NSSize(width: 1180, height: 760)

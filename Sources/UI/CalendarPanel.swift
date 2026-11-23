@@ -1,9 +1,42 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The calendar panel, on the right: a day of Google Calendar beside your tasks.
-/// - the week across the top, a dot where something's on
-/// - the day's all-day events, then its hours, with your timed tasks among the events
+/// Day, week or month.
+enum CalendarMode: String, CaseIterable {
+    case day, week, month
+
+    /// How wide the panel starts out for it.
+    var standardWidth: CGFloat { self == .day ? 300 : 640 }
+}
+
+/// The days a week or a month view shows.
+enum CalendarDays {
+    /// Seven days from the week's first day (`start`: 0 sunday, 1 monday).
+    static func week(of day: String, start: Int) -> [String] {
+        guard let date = Day.date(day) else { return [day] }
+        let weekday = Day.calendar.component(.weekday, from: date) - 1
+        let back = (weekday - start + 7) % 7
+        return (0..<7).compactMap { Day.adding($0 - back, to: day) }
+    }
+
+    /// Whole weeks covering the month `day` is in.
+    static func month(of day: String, start: Int) -> [String] {
+        guard let date = Day.date(day),
+              let first = Day.calendar.date(from: Day.calendar.dateComponents([.year, .month], from: date)),
+              let days = Day.calendar.range(of: .day, in: .month, for: date)?.count else { return [day] }
+        let firstDay = Day.string(first)
+        let lead = (Day.calendar.component(.weekday, from: first) - 1 - start + 7) % 7
+        let cells = Int((Double(lead + days) / 7).rounded(.up)) * 7
+        return (0..<cells).compactMap { Day.adding($0 - lead, to: firstDay) }
+    }
+
+    static func isSameMonth(_ a: String, _ b: String) -> Bool { a.prefix(7) == b.prefix(7) }
+}
+
+/// The calendar panel: Google Calendar beside your tasks, as a day, a week or a month.
+/// - day: the week across the top, the day's all-day events, then its hours with your timed tasks
+/// - week: seven days of hours side by side
+/// - month: the month's days, a few things on each; click one to see it
 /// - drop a task on an hour to do it then, or on a day to move it there
 /// - double-click an hour to put an event there (the rules' form)
 struct CalendarPanel: View {
@@ -15,18 +48,34 @@ struct CalendarPanel: View {
         let day = model.shownDay
         VStack(alignment: .leading, spacing: 0) {
             PanelHeading(model: model, day: day)
-            WeekStrip(model: model, day: day)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 10)
-            Hairline()
-            if bridge.connected {
-                DayView(model: model, day: day, width: width)
-            } else {
+            if !bridge.connected {
+                Hairline()
                 NotConnected(model: model)
+            } else {
+                switch model.calendarMode {
+                case .day:
+                    WeekStrip(model: model, day: day)
+                        .padding(.horizontal, 10)
+                        .padding(.bottom, 10)
+                    Hairline()
+                    AllDaySection(model: model, day: day, events: bridge.everything(on: day).filter(\.allDay),
+                                  tasks: model.snap.tasks.filter { $0.due == day && $0.time == nil && !$0.done && !$0.isIdea })
+                    Hairline()
+                    HoursView(model: model, days: [day], width: width)
+                case .week:
+                    let days = model.shownDays
+                    WeekHeader(model: model, days: days, width: width)
+                    Hairline()
+                    WeekAllDay(model: model, days: days, width: width)
+                    Hairline()
+                    HoursView(model: model, days: days, width: width)
+                case .month:
+                    MonthView(model: model, day: day, width: width)
+                }
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
-        .onAppear { bridge.want(day) }
+        .onAppear { model.wantShown() }
     }
 }
 
@@ -38,20 +87,30 @@ private struct PanelHeading: View {
 
     var body: some View {
         let today = Day.today(model.timers.now)
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(name(today: today)).font(Theme.font(21, bold: true)).lineLimit(1)
-                Text(Format.longDay(day)).font(Theme.meta).foregroundStyle(Theme.secondary).lineLimit(1)
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(title).font(Theme.font(21, bold: true)).lineLimit(1).contentTransition(.opacity)
+                Spacer(minLength: 4)
+                Quiet(label: "", symbol: "chevron.left", size: 14) { step(-1) }.help("earlier (⌥⌘[)")
+                Quiet(label: "today", size: 13.5) {
+                    withAnimation(.snappy(duration: 0.2)) { model.showDay(today) }
+                }
+                Quiet(label: "", symbol: "chevron.right", size: 14) { step(1) }.help("later (⌥⌘])")
+                CalendarsMenu(model: model)
             }
-            .contentTransition(.opacity)
-            Spacer(minLength: 4)
-            Quiet(label: "", symbol: "chevron.left", size: 14) { step(-1) }.help("day before")
-            if day != today {
-                Quiet(label: "today", size: 13.5) { withAnimation(.snappy(duration: 0.2)) { model.showDay(today) } }
-                    .transition(.opacity)
+            HStack(spacing: 14) {
+                ForEach(CalendarMode.allCases, id: \.self) { mode in
+                    Button {
+                        withAnimation(.snappy(duration: 0.25)) { model.calendarMode = mode }
+                    } label: {
+                        Text(mode.rawValue)
+                            .font(Theme.font(13.5, bold: model.calendarMode == mode))
+                            .foregroundStyle(model.calendarMode == mode ? Theme.ink : Theme.faint)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            Quiet(label: "", symbol: "chevron.right", size: 14) { step(1) }.help("day after")
-            CalendarsMenu(model: model)
         }
         .padding(.top, 34)
         .padding(.leading, 18)
@@ -59,44 +118,72 @@ private struct PanelHeading: View {
         .padding(.bottom, 12)
     }
 
-    private func step(_ days: Int) { withAnimation(.snappy(duration: 0.2)) { model.stepDay(days) } }
+    private func step(_ steps: Int) { withAnimation(.snappy(duration: 0.2)) { model.stepDay(steps) } }
 
-    /// "today", "tomorrow", "yesterday", else "nov 30".
-    private func name(today: String) -> String {
-        switch Day.between(today, day) {
-        case 0: return "today"
-        case 1: return "tomorrow"
-        case -1: return "yesterday"
-        default: return Format.monthDay(day)
+    /// "sun nov 22"; "nov 16-22"; "november".
+    private var title: String {
+        switch model.calendarMode {
+        case .day:
+            return Format.shortDay(day)
+        case .week:
+            let days = model.shownDays
+            guard let first = days.first, let last = days.last else { return "" }
+            let a = Format.monthDay(first), b = Format.monthDay(last)
+            return CalendarDays.isSameMonth(first, last) ? a + "-" + (b.split(separator: " ").last.map(String.init) ?? b) : a + "-" + b
+        case .month:
+            guard let date = Day.date(day) else { return "" }
+            let sameYear = Day.calendar.component(.year, from: date) == Day.calendar.component(.year, from: Date())
+            return (sameYear ? Self.monthName : Self.monthYear).string(from: date).lowercased()
         }
+    }
+
+    private static let monthName: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("MMMM")
+        return formatter
+    }()
+
+    private static let monthYear: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("MMMMy")
+        return formatter
+    }()
+}
+
+/// Which calendars show (a list that stays open while you click through it), and the rest.
+private struct CalendarsMenu: View {
+    @ObservedObject var model: AppModel
+    @Local private var open = false
+
+    var body: some View {
+        Quiet(label: "", symbol: "ellipsis.circle", size: 15) { open.toggle() }
+            .popover(isPresented: $open, arrowEdge: .bottom) { CalendarsList(model: model, calendar: model.calendar, open: $open) }
+            .help("calendars")
     }
 }
 
-/// Which calendars show, and the rest.
-private struct CalendarsMenu: View {
+private struct CalendarsList: View {
     @ObservedObject var model: AppModel
+    @ObservedObject var calendar: CalendarBridge
+    @Binding var open: Bool
 
     var body: some View {
-        let bridge = model.calendar
-        Menu {
-            if bridge.connected {
-                Section("calendars") {
-                    ForEach(bridge.calendars) { calendar in
-                        Toggle(calendar.title.lowercased(), isOn: Binding(get: { bridge.isShown(calendar) }, set: { bridge.setShown(calendar.id, $0) }))
-                    }
+        VStack(alignment: .leading, spacing: 2) {
+            if calendar.connected {
+                Text("calendars").font(Theme.font(12.5)).foregroundStyle(Theme.faint).padding(.horizontal, 6).padding(.bottom, 2)
+                ForEach(calendar.calendars) { info in
+                    CalendarSwitch(calendar: calendar, info: info, name: info.title.lowercased())
                 }
-                Divider()
-                Button("new event…") { model.newEvent(day: model.shownDay, time: nil) }
-                Button("refresh") { bridge.reload() }
+                Hairline().padding(.vertical, 6)
+                Quiet(label: "new event", symbol: "plus") { open = false; model.newEvent(day: model.shownDay, time: nil) }.padding(.horizontal, 6)
+                Quiet(label: "refresh", symbol: "arrow.clockwise") { calendar.reload() }.padding(.horizontal, 6)
             }
-            Button("calendar settings…") { bridge.openSettings() }
-            Button("hide calendar") { model.showCalendar = false }
-        } label: {
-            Image(systemName: "ellipsis.circle").foregroundStyle(Theme.secondary)
+            Quiet(label: "calendar settings", symbol: "gearshape") { open = false; calendar.openSettings() }.padding(.horizontal, 6)
+            Quiet(label: "hide calendar", symbol: "eye.slash") { open = false; model.showCalendar = false }.padding(.horizontal, 6)
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
+        .padding(12)
+        .frame(width: 250, alignment: .leading)
+        .background(Theme.paper)
     }
 }
 
@@ -109,19 +196,11 @@ private struct WeekStrip: View {
     var body: some View {
         let today = Day.today(model.timers.now)
         HStack(spacing: 0) {
-            ForEach(week, id: \.self) { date in
+            ForEach(CalendarDays.week(of: day, start: model.snap.weekStart), id: \.self) { date in
                 DayCell(model: model, day: date, selected: date == day, isToday: date == today)
                     .frame(maxWidth: .infinity)
             }
         }
-    }
-
-    /// Seven days from the week's first day (monday, unless the file says otherwise).
-    private var week: [String] {
-        guard let date = Day.date(day) else { return [day] }
-        let weekday = Day.calendar.component(.weekday, from: date) - 1   // 0 is sunday
-        let back = (weekday - model.snap.weekStart + 7) % 7
-        return (0..<7).compactMap { Day.adding($0 - back, to: day) }
     }
 }
 
@@ -142,7 +221,7 @@ private struct DayCell: View {
                 .foregroundStyle(selected && isToday ? .white : isToday ? Theme.accent : Theme.ink)
                 .frame(width: 26, height: 26)
                 .background(Circle().fill(selected ? (isToday ? Theme.accent : Theme.selectionFocused) : targeted ? Theme.selection : .clear))
-            Circle().fill(model.calendar.hasEvents(on: day) ? Theme.faint : .clear).frame(width: 4, height: 4)
+            Circle().fill(model.calendar.hasEvents(on: day) ? Theme.secondary : .clear).frame(width: 4, height: 4)
         }
         .contentShape(Rectangle())
         .onTapGesture { withAnimation(.snappy(duration: 0.2)) { model.showDay(day) } }
@@ -154,80 +233,176 @@ private struct DayCell: View {
     }
 }
 
-// MARK: - the day
+// MARK: - the week
 
-private struct DayView: View {
+/// The week's days across the top: click one to see that day; drop a task on one to move it there.
+private struct WeekHeader: View {
+    @ObservedObject var model: AppModel
+    let days: [String]
+    let width: CGFloat
+
+    var body: some View {
+        let today = Day.today(model.timers.now)
+        let column = HoursView.column(width: width, days: days.count)
+        HStack(spacing: 0) {
+            Color.clear.frame(width: HoursView.gutter, height: 1)
+            ForEach(days, id: \.self) { day in
+                WeekDayTop(model: model, day: day, isToday: day == today).frame(width: column)
+            }
+        }
+        .padding(.bottom, 8)
+    }
+}
+
+private struct WeekDayTop: View {
     @ObservedObject var model: AppModel
     let day: String
+    let isToday: Bool
+    @Local private var targeted = false
+
+    var body: some View {
+        let date = Day.date(day) ?? Date()
+        let weekday = Day.calendar.component(.weekday, from: date) - 1
+        VStack(spacing: 2) {
+            Text(["sun", "mon", "tue", "wed", "thu", "fri", "sat"][weekday]).font(Theme.font(11.5)).foregroundStyle(Theme.faint)
+            Text("\(Day.calendar.component(.day, from: date))")
+                .font(Theme.font(15, bold: isToday))
+                .foregroundStyle(isToday ? .white : Theme.ink)
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(isToday ? Theme.accent : targeted ? Theme.selection : .clear))
+        }
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.snappy(duration: 0.25)) {
+                model.calendarMode = .day
+                model.showDay(day)
+            }
+        }
+        .dropDestination(for: String.self) { items, _ in
+            model.schedule(items, day: day, time: nil, keepTime: true)
+            return true
+        } isTargeted: { targeted = $0 }
+        .help(Format.longDay(day))
+    }
+}
+
+/// The week's all-day events, a column a day (two each, then how many more).
+private struct WeekAllDay: View {
+    @ObservedObject var model: AppModel
+    let days: [String]
     let width: CGFloat
-    @Local private var marker: CGFloat?
+
+    var body: some View {
+        let column = HoursView.column(width: width, days: days.count)
+        HStack(alignment: .top, spacing: 0) {
+            Text("all day").font(Theme.font(11)).foregroundStyle(Theme.faint)
+                .frame(width: HoursView.gutter - 8, alignment: .trailing).padding(.trailing, 8)
+            ForEach(days, id: \.self) { day in
+                let events = model.calendar.everything(on: day).filter(\.allDay)
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(events.prefix(2)) { event in AllDayChip(model: model, event: event, compact: true) }
+                    if events.count > 2 { Text("\(events.count - 2) more").font(Theme.font(10.5)).foregroundStyle(Theme.secondary) }
+                    if events.isEmpty { Color.clear.frame(height: 14) }
+                }
+                .padding(.horizontal, 1.5)
+                .frame(width: column, alignment: .topLeading)
+                .dropDestination(for: String.self) { items, _ in
+                    model.schedule(items, day: day, time: nil)
+                    return true
+                }
+            }
+        }
+        .padding(.vertical, 6)
+    }
+}
+
+// MARK: - hours (a day, or a week)
+
+/// The hours, for one day or several side by side: events tinted, your timed tasks dashed, now as
+/// a gold line. Drop a task on an hour to do it then; double-click for a new event there.
+private struct HoursView: View {
+    @ObservedObject var model: AppModel
+    let days: [String]
+    let width: CGFloat
+    @Local private var marker: DropSpot?
 
     static let hour: CGFloat = 44
     static let gutter: CGFloat = 44
 
-    /// Where the blocks go: right of the hours, short of the edge.
-    private var area: CGFloat { max(width - Self.gutter - 10, 80) }
+    static func column(width: CGFloat, days: Int) -> CGFloat { max(width - gutter - 8, 80) / CGFloat(max(days, 1)) }
+    private var column: CGFloat { Self.column(width: width, days: days.count) }
+    private var compact: Bool { days.count > 1 }
 
     var body: some View {
         let now = model.timers.now
         let today = Day.today(now)
-        let events = model.calendar.everything(on: day)
-        let timed = events.filter { !$0.allDay }
-        let shownEvents = Set(timed.map(\.eventId))
-        let dayTasks = model.snap.tasks.filter { $0.due == day && !$0.isIdea }
-        let timedTasks = dayTasks.filter { $0.time != nil && !($0.event.map { shownEvents.contains($0.id) } ?? false) }
-        let untimed = dayTasks.filter { $0.time == nil && !$0.done }
-        let placed = Self.lay(timed.map(Placed.init(event:)) + timedTasks.compactMap(Placed.init(task:)), day: day)
-        VStack(spacing: 0) {
-            AllDaySection(model: model, day: day, events: events.filter(\.allDay), tasks: untimed)
-            Hairline()
-            ScrollViewReader { proxy in
-                ScrollView {
-                    ZStack(alignment: .topLeading) {
-                        HourGrid()
-                            .contentShape(Rectangle())
-                            .onTapGesture(count: 2) { location in
-                                model.newEvent(day: day, time: Self.clock(Self.minutes(at: location.y, step: 30)))
-                            }
-                        ForEach(placed) { item in
-                            let y = CGFloat(item.from) * Self.hour / 60
-                            let height = max(CGFloat(item.to - item.from) * Self.hour / 60, 20) - 2
-                            let column = area / CGFloat(item.columns)
-                            block(item, height: height, now: now)
-                                .frame(width: max(column - 2, 10), height: height)
-                                .offset(x: Self.gutter + column * CGFloat(item.column), y: y + 1)
-                                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        ScrollViewReader { proxy in
+            ScrollView {
+                ZStack(alignment: .topLeading) {
+                    HourGrid()
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) { location in
+                            let index = min(max(Int((location.x - Self.gutter) / column), 0), days.count - 1)
+                            model.newEvent(day: days[index], time: Self.clock(Self.minutes(at: location.y, step: 30)))
                         }
-                        if day == today { NowLine(width: area).offset(x: Self.gutter - 4, y: Self.y(now) - 4) }
-                        if let marker {
-                            DropMarker(time: Self.clock(Int(marker / Self.hour * 60)), width: area)
-                                .offset(x: Self.gutter - 40, y: marker - 8)
+                    if compact {
+                        ForEach(1..<days.count, id: \.self) { index in
+                            Rectangle().fill(Theme.rule).frame(width: 1, height: 24 * Self.hour)
+                                .offset(x: Self.gutter + column * CGFloat(index) - 1)
+                                .allowsHitTesting(false)
                         }
                     }
-                    .frame(width: width, height: 24 * Self.hour, alignment: .topLeading)
-                    .onDrop(of: [.plainText], delegate: HourDrop(model: model, day: day, marker: $marker))
-                    .padding(.vertical, 10)
-                    .animation(.snappy(duration: 0.25), value: placed.map(\.id))
+                    ForEach(Array(days.enumerated()), id: \.element) { index, day in
+                        ForEach(Self.items(on: day, model: model)) { item in
+                            let y = CGFloat(item.from) * Self.hour / 60
+                            let height = max(CGFloat(item.to - item.from) * Self.hour / 60, 20) - 2
+                            let share = column / CGFloat(item.columns)
+                            block(item, height: height, now: now)
+                                .frame(width: max(share - 2, 6), height: height)
+                                .offset(x: Self.gutter + column * CGFloat(index) + share * CGFloat(item.column) + 1, y: y + 1)
+                                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                        }
+                    }
+                    if let index = days.firstIndex(of: today) {
+                        NowLine(width: column).offset(x: Self.gutter + column * CGFloat(index) - 4, y: Self.y(now) - 4)
+                    }
+                    if let marker {
+                        DropMarker(time: Self.clock(Int(marker.y / Self.hour * 60)), width: column)
+                            .offset(x: Self.gutter + column * CGFloat(marker.column) - 38, y: marker.y - 8)
+                    }
                 }
-                .scrollIndicators(.never)
-                .onAppear { scroll(proxy, first: timed.first, today: today, now: now) }
-                .onChange(of: day) { _, _ in scroll(proxy, first: model.calendar.everything(on: day).first { !$0.allDay }, today: today, now: now) }
+                .frame(width: width, height: 24 * Self.hour, alignment: .topLeading)
+                .onDrop(of: [.plainText], delegate: HourDrop(model: model, days: days, column: column, marker: $marker))
+                .padding(.vertical, 10)
             }
+            .scrollIndicators(.never)
+            .onAppear { scroll(proxy, today: today, now: now) }
+            .onChange(of: days) { _, _ in scroll(proxy, today: today, now: now) }
         }
     }
 
     @ViewBuilder private func block(_ item: Placed, height: CGFloat, now: Date) -> some View {
         switch item.kind {
-        case .event(let event): EventBlock(model: model, event: event, height: height, past: event.end < now)
-        case .task(let task): TaskBlock(model: model, task: task, height: height)
+        case .event(let event): EventBlock(model: model, event: event, height: height, past: event.end < now, compact: compact)
+        case .task(let task): TaskBlock(model: model, task: task, height: height, compact: compact)
         }
     }
 
-    /// To an hour before now (today), else an hour before the first event, else the morning.
-    private func scroll(_ proxy: ScrollViewProxy, first: CalEvent?, today: String, now: Date) {
+    /// A day's timed events and tasks, laid out (a task on the calendar shows as its event).
+    static func items(on day: String, model: AppModel) -> [Placed] {
+        let timed = model.calendar.everything(on: day).filter { !$0.allDay }
+        let shown = Set(timed.map(\.eventId))
+        let tasks = model.snap.tasks.filter { $0.due == day && !$0.isIdea && $0.time != nil && !($0.event.map { shown.contains($0.id) } ?? false) }
+        return lay(timed.map(Placed.init(event:)) + tasks.compactMap(Placed.init(task:)), day: day)
+    }
+
+    /// To an hour before now (when today's showing), else before the first event, else the morning.
+    private func scroll(_ proxy: ScrollViewProxy, today: String, now: Date) {
+        let firsts = days.compactMap { day in model.calendar.everything(on: day).filter { !$0.allDay }.map(\.start).min() }
         let hour: Int
-        if day == today { hour = Day.calendar.component(.hour, from: now) - 1 }
-        else if let first { hour = Day.calendar.component(.hour, from: first.start) - 1 }
+        if days.contains(today) { hour = Day.calendar.component(.hour, from: now) - 1 }
+        else if let first = firsts.map({ Day.calendar.component(.hour, from: $0) }).min() { hour = first - 1 }
         else { hour = model.calendar.dayStart - 1 }
         DispatchQueue.main.async { proxy.scrollTo("h\(min(max(hour, 0), 23))", anchor: .top) }
     }
@@ -323,6 +498,12 @@ private struct DayView: View {
     static func clock(_ minutes: Int) -> String { String(format: "%02d:%02d", minutes / 60, minutes % 60) }
 }
 
+/// Where a dragged task would land: which day's column, and how far down.
+private struct DropSpot: Equatable {
+    var column: Int
+    var y: CGFloat
+}
+
 /// The hours down the side, a hairline at each.
 private struct HourGrid: View {
     var body: some View {
@@ -331,12 +512,12 @@ private struct HourGrid: View {
                 HStack(alignment: .top, spacing: 6) {
                     Text(hour == 0 ? "" : Format.time(String(format: "%02d:00", hour)))
                         .font(Theme.font(11))
-                        .foregroundStyle(Theme.faint)
-                        .frame(width: DayView.gutter - 8, alignment: .trailing)
+                        .foregroundStyle(Theme.secondary)
+                        .frame(width: HoursView.gutter - 8, alignment: .trailing)
                         .offset(y: -7)
                     Rectangle().fill(Theme.rule).frame(height: 1)
                 }
-                .frame(height: DayView.hour, alignment: .top)
+                .frame(height: HoursView.hour, alignment: .top)
                 .id("h\(hour)")
             }
         }
@@ -349,7 +530,7 @@ private struct NowLine: View {
     var body: some View {
         HStack(spacing: 0) {
             Circle().fill(Theme.accent).frame(width: 8, height: 8)
-            Rectangle().fill(Theme.accent).frame(height: 1.2)
+            Rectangle().fill(Theme.accent).frame(height: 1.5)
         }
         .frame(width: width + 4, height: 8)
         .allowsHitTesting(false)
@@ -373,23 +554,27 @@ private struct DropMarker: View {
 /// Dropping on the hours: tasks get that day and time (to the quarter hour); a line shows where.
 private struct HourDrop: DropDelegate {
     let model: AppModel
-    let day: String
-    @Binding var marker: CGFloat?
+    let days: [String]
+    let column: CGFloat
+    @Binding var marker: DropSpot?
+
+    private func index(_ point: CGPoint) -> Int { min(max(Int((point.x - HoursView.gutter) / column), 0), days.count - 1) }
 
     func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [.plainText]) }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        marker = CGFloat(DayView.minutes(at: info.location.y)) * DayView.hour / 60
+        marker = DropSpot(column: index(info.location), y: CGFloat(HoursView.minutes(at: info.location.y)) * HoursView.hour / 60)
         return DropProposal(operation: .move)
     }
 
     func dropExited(info: DropInfo) { marker = nil }
 
     func performDrop(info: DropInfo) -> Bool {
-        let time = DayView.clock(DayView.minutes(at: info.location.y))
+        let time = HoursView.clock(HoursView.minutes(at: info.location.y))
+        let day = days[index(info.location)]
         marker = nil
         let providers = info.itemProviders(for: [.plainText])
-        let model = model, day = day
+        let model = model
         for provider in providers {
             _ = provider.loadObject(ofClass: NSString.self) { object, _ in
                 guard let text = object as? NSString else { return }
@@ -401,6 +586,108 @@ private struct HourDrop: DropDelegate {
     }
 }
 
+// MARK: - the month
+
+/// The month: its days in weeks, a few things on each (events, then what's due), and how many
+/// more. Click a day to see it; drop a task on one to move it there.
+private struct MonthView: View {
+    @ObservedObject var model: AppModel
+    let day: String
+    let width: CGFloat
+
+    var body: some View {
+        let days = model.shownDays
+        let rows = max(days.count / 7, 1)
+        let column = (width - 12) / 7
+        let today = Day.today(model.timers.now)
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                ForEach(days.prefix(7), id: \.self) { date in
+                    let weekday = Day.calendar.component(.weekday, from: Day.date(date) ?? Date()) - 1
+                    Text(["sun", "mon", "tue", "wed", "thu", "fri", "sat"][weekday]).font(Theme.font(11.5)).foregroundStyle(Theme.faint)
+                        .frame(width: column)
+                }
+            }
+            .padding(.bottom, 6)
+            Hairline()
+            GeometryReader { space in
+                let height = max((space.size.height - 4) / CGFloat(rows), 64)
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(0..<rows, id: \.self) { row in
+                            HStack(spacing: 0) {
+                                ForEach(0..<7, id: \.self) { col in
+                                    let date = days[row * 7 + col]
+                                    MonthCell(model: model, day: date, inMonth: CalendarDays.isSameMonth(date, day), isToday: date == today)
+                                        .frame(width: column, height: height)
+                                        .overlay(alignment: .trailing) { if col < 6 { Rectangle().fill(Theme.rule).frame(width: 1) } }
+                                }
+                            }
+                            .overlay(alignment: .bottom) { Rectangle().fill(Theme.rule).frame(height: 1) }
+                        }
+                    }
+                }
+                .scrollIndicators(.never)
+            }
+        }
+        .padding(.horizontal, 6)
+    }
+}
+
+private struct MonthCell: View {
+    @ObservedObject var model: AppModel
+    let day: String
+    let inMonth: Bool
+    let isToday: Bool
+    @Local private var targeted = false
+    @Local private var hovering = false
+
+    var body: some View {
+        let events = model.calendar.everything(on: day).sorted { ($0.allDay ? 0 : 1, $0.start) < ($1.allDay ? 0 : 1, $1.start) }
+        let tasks = model.snap.tasks.filter { $0.due == day && !$0.done && !$0.isIdea && !($0.event.map { link in events.contains { $0.eventId == link.id } } ?? false) }
+        let room = 3
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(Day.calendar.component(.day, from: Day.date(day) ?? Date()))")
+                .font(Theme.font(12.5, bold: isToday))
+                .foregroundStyle(isToday ? .white : inMonth ? Theme.ink : Theme.faint)
+                .frame(minWidth: 20, minHeight: 20)
+                .background(Circle().fill(isToday ? Theme.accent : .clear))
+            ForEach(events.prefix(room)) { event in
+                HStack(spacing: 3) {
+                    RoundedRectangle(cornerRadius: 1).fill(Theme.color(hex: event.color)).frame(width: 2.5, height: 10)
+                    Text(event.title).font(Theme.font(11)).foregroundStyle(Theme.ink).lineLimit(1)
+                }
+            }
+            ForEach(tasks.prefix(max(room - events.count, 0))) { task in
+                HStack(spacing: 3) {
+                    Circle().strokeBorder(Theme.secondary, lineWidth: 1).frame(width: 7, height: 7)
+                    Text(model.display(task.title)).font(Theme.font(11)).foregroundStyle(Theme.ink).lineLimit(1)
+                }
+            }
+            let more = events.count + tasks.count - room
+            if more > 0 { Text("\(more) more").font(Theme.font(10.5)).foregroundStyle(Theme.secondary) }
+            Spacer(minLength: 0)
+        }
+        .padding(4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(targeted ? Theme.selection : hovering ? Theme.hover : .clear)
+        .opacity(inMonth ? 1 : 0.6)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .onTapGesture {
+            withAnimation(.snappy(duration: 0.25)) {
+                model.calendarMode = .day
+                model.showDay(day)
+            }
+        }
+        .dropDestination(for: String.self) { items, _ in
+            model.schedule(items, day: day, time: nil, keepTime: true)
+            return true
+        } isTargeted: { targeted = $0 }
+        .help(Format.longDay(day))
+    }
+}
+
 // MARK: - what's on it
 
 /// An event: a tint of its label's color (or its calendar's), its title, its time. Click for more.
@@ -409,6 +696,8 @@ private struct EventBlock: View {
     let event: CalEvent
     let height: CGFloat
     let past: Bool
+    /// In a week: the title alone, small.
+    var compact = false
     @Local private var showing = false
     @Local private var hovering = false
 
@@ -416,9 +705,12 @@ private struct EventBlock: View {
         let color = Theme.color(hex: event.color)
         let short = height < 30
         HStack(alignment: .top, spacing: 0) {
-            Rectangle().fill(color).frame(width: 3)
+            Rectangle().fill(color).frame(width: compact ? 2.5 : 3)
             VStack(alignment: .leading, spacing: 0) {
-                if short {
+                if compact {
+                    Text(event.title).font(Theme.font(11)).foregroundStyle(Theme.ink)
+                        .lineLimit(max(Int((height - 4) / 13), 1))
+                } else if short {
                     HStack(spacing: 4) {
                         Text(event.title).foregroundStyle(Theme.ink)
                         Text(Format.time(Day.clock(event.start))).foregroundStyle(Theme.secondary)
@@ -431,25 +723,40 @@ private struct EventBlock: View {
                     Text(Format.span(event.start, event.end, allDay: false)).font(Theme.font(11.5)).foregroundStyle(Theme.secondary).lineLimit(1)
                 }
             }
-            .padding(.leading, 5)
+            .padding(.leading, compact ? 3 : 5)
             .padding(.trailing, 2)
-            .padding(.vertical, short ? 2 : 3)
+            .padding(.vertical, short || compact ? 2 : 3)
             Spacer(minLength: 0)
-            if event.taskId != nil {
+            if event.taskId != nil, !compact {
                 Image(systemName: "checklist").font(.system(size: 9)).foregroundStyle(Theme.secondary).padding(4)
             }
         }
         .frame(height: height, alignment: .top)
-        .background(color.opacity(hovering || showing ? 0.24 : 0.14))
+        .background(color.opacity(hovering || showing ? 0.36 : 0.24))
         .overlay {
             if event.tentative { RoundedRectangle(cornerRadius: 4).strokeBorder(color.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [3, 2])) }
         }
         .clipShape(RoundedRectangle(cornerRadius: 4))
-        .opacity(past ? 0.55 : 1)
+        .opacity(past ? 0.82 : 1)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture { showing = true }
         .popover(isPresented: $showing, arrowEdge: .leading) { EventCard(model: model, event: event) }
+        .draggable("toyl-event:" + event.calendarId + "|" + event.eventId) { EventDragPreview(event: event) }
+        .help("drag onto a task to tie it to this event")
+    }
+}
+
+/// What's dragged when an event is: its title on its color.
+private struct EventDragPreview: View {
+    let event: CalEvent
+    var body: some View {
+        HStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 1.5).fill(Theme.color(hex: event.color)).frame(width: 3, height: 13)
+            Text(event.title).font(Theme.font(14)).foregroundStyle(Theme.ink)
+        }
+        .padding(.horizontal, 9).padding(.vertical, 4)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Theme.color(hex: event.color).opacity(0.25)))
     }
 }
 
@@ -459,19 +766,23 @@ private struct TaskBlock: View {
     @ObservedObject var model: AppModel
     let task: TaskModel
     let height: CGFloat
+    /// In a week: the title alone, small.
+    var compact = false
     @Local private var hovering = false
 
     var body: some View {
         let done = model.isDone(task)
-        let short = height < 30
+        let short = height < 30 || compact
         let selected = model.selection.contains(task.id)
-        HStack(alignment: short ? .center : .top, spacing: 5) {
-            CheckCircle(done: done, late: false, size: 11)
-                .padding(.top, short ? 0 : 3)
-                .onTapGesture { model.complete([task.id]) }
+        HStack(alignment: short ? .center : .top, spacing: compact ? 3 : 5) {
+            if !compact {
+                CheckCircle(done: done, late: false, size: 11)
+                    .padding(.top, short ? 0 : 3)
+                    .onTapGesture { model.complete([task.id]) }
+            }
             VStack(alignment: .leading, spacing: 0) {
                 Text(model.display(task.title))
-                    .font(Theme.font(12.5))
+                    .font(Theme.font(compact ? 11 : 12.5))
                     .foregroundStyle(done ? Theme.secondary : Theme.ink)
                     .strikethrough(done, color: Theme.faint)
                     .lineLimit(short ? 1 : max(Int((height - 18) / 15), 1))
@@ -479,12 +790,12 @@ private struct TaskBlock: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 5)
+        .padding(.horizontal, compact ? 3 : 5)
         .padding(.vertical, short ? 0 : 2)
         .frame(height: height, alignment: short ? .center : .top)
         .background(RoundedRectangle(cornerRadius: 4).fill(selected ? Theme.selection : hovering ? Theme.hover : Theme.paper))
-        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.faint, style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
-        .opacity(done ? 0.6 : 1)
+        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.secondary, style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
+        .opacity(done ? 0.8 : 1)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture { model.reveal(task: task.id) }
@@ -521,7 +832,7 @@ private struct AllDaySection: View {
             Text("all day")
                 .font(Theme.font(11))
                 .foregroundStyle(Theme.faint)
-                .frame(width: DayView.gutter - 8, alignment: .trailing)
+                .frame(width: HoursView.gutter - 8, alignment: .trailing)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(events) { event in AllDayChip(model: model, event: event) }
@@ -571,21 +882,23 @@ private struct AllDaySection: View {
 private struct AllDayChip: View {
     @ObservedObject var model: AppModel
     let event: CalEvent
+    var compact = false
     @Local private var showing = false
 
     var body: some View {
         let color = Theme.color(hex: event.color)
-        HStack(spacing: 5) {
-            RoundedRectangle(cornerRadius: 1.5).fill(color).frame(width: 3, height: 12)
-            Text(event.title).font(Theme.font(12.5)).lineLimit(1)
+        HStack(spacing: compact ? 3 : 5) {
+            RoundedRectangle(cornerRadius: 1.5).fill(color).frame(width: compact ? 2.5 : 3, height: compact ? 10 : 12)
+            Text(event.title).font(Theme.font(compact ? 11 : 12.5)).foregroundStyle(Theme.ink).lineLimit(1)
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 2)
-        .padding(.horizontal, 4)
-        .background(RoundedRectangle(cornerRadius: 4).fill(color.opacity(showing ? 0.2 : 0.1)))
+        .padding(.vertical, compact ? 1 : 2)
+        .padding(.horizontal, compact ? 3 : 4)
+        .background(RoundedRectangle(cornerRadius: 4).fill(color.opacity(showing ? 0.34 : 0.22)))
         .contentShape(Rectangle())
         .onTapGesture { showing = true }
         .popover(isPresented: $showing, arrowEdge: .leading) { EventCard(model: model, event: event) }
+        .draggable("toyl-event:" + event.calendarId + "|" + event.eventId) { EventDragPreview(event: event) }
     }
 }
 

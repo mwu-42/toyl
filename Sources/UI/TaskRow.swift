@@ -39,13 +39,6 @@ struct TaskRow: View {
                         .animation(.easeOut(duration: 0.2), value: done)
                 }
                 if let meta = metaLine { meta.font(Theme.meta).lineLimit(1) }
-                let links = NoteLinks.links(in: task.notes)
-                if !links.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(links.prefix(3), id: \.self) { url in LinkCard(url: url, compact: true).frame(maxWidth: 240, alignment: .leading) }
-                    }
-                    .padding(.top, 3)
-                }
                 if !task.subtasks.isEmpty || (selected && model.selection.count == 1 && !done) {
                     Sublist(model: model, task: task, adding: selected && model.selection.count == 1 && !done)
                         .padding(.top, 3)
@@ -69,13 +62,21 @@ struct TaskRow: View {
         .overlay(alignment: .top) {
             if targeted { Rectangle().fill(Theme.accent).frame(height: 2).padding(.horizontal, 6) }
         }
+        .background(Theme.paper.opacity(model.swipe?.id == task.id ? 1 : 0))
+        .offset(x: model.swipe?.id == task.id ? model.swipe!.offset : 0)
+        .background { SwipeBehind(offset: model.swipe?.id == task.id ? model.swipe!.offset : 0, inProgress: model.isInProgress(task)) }
         .contentShape(Rectangle())
-        .onHover { hovering = $0 }
+        .onHover { inside in
+            hovering = inside
+            if inside { model.hoveredTask = task.id } else if model.hoveredTask == task.id { model.hoveredTask = nil }
+        }
         .onTapGesture { click() }
         .contextMenu { TaskMenu(model: model, ids: menuTargets) }
         .draggable("toyl:" + dragTargets.joined(separator: ","))
         .dropDestination(for: String.self) { items, _ in
-            model.drop(items, list: group.listId ?? task.listId, section: group.sectionId ?? task.sectionId, before: task.id)
+            // An event from the calendar: this task follows it.
+            if items.contains(where: { $0.hasPrefix("toyl-event:") }) { return model.linkEvent(items, to: task.id) }
+            return model.drop(items, list: group.listId ?? task.listId, section: group.sectionId ?? task.sectionId, before: task.id)
         } isTargeted: { targeted = $0 }
     }
 
@@ -118,6 +119,9 @@ struct TaskRow: View {
             // Late is said quietly: a soft red on the date, nothing more.
             let color = late ? Theme.late.opacity(0.75) : (task.due == today ? Theme.ink : Theme.secondary)
             parts.append(Text(when).foregroundColor(color))
+        }
+        if model.isInProgress(task), group.sectionId != task.sectionId {
+            parts.insert(Text(Image(systemName: "circle.lefthalf.filled")).foregroundColor(Theme.accent) + Text(" in progress").foregroundColor(Theme.accent), at: 0)
         }
         if task.isFromEmail { parts.append(Text(Image(systemName: "envelope")) + Text(" email")) }
         if let repeats = task.repeats { parts.append(Text(Image(systemName: "arrow.2.squarepath")) + Text(" " + repeats.phrase)) }
@@ -208,6 +212,9 @@ struct TaskMenu: View {
         Button("next week") { model.setDue(TodQuick.read("next week", now: Date(), weekStart: model.snap.weekStart).due, for: ids) }
         Button("no date") { model.setDue(nil, for: ids) }
         Divider()
+        if let one {
+            Button(model.isInProgress(one) ? "back to to-do" : "in progress (swipe left)") { model.toggleInProgress(one.id) }
+        }
         Button(tasks.allSatisfy(\.pinned) ? "unpin" : "pin to the top") { model.togglePin(ids) }
         Button(tasks.allSatisfy(\.someday) ? "back from ideas" : "to ideas (put off)") { model.toggleSomeday(ids) }
         Menu("move to") {
@@ -311,5 +318,38 @@ struct Sublist: View {
         var p = TaskPatch()
         p.subtasks = items.filter { $0.id != id }
         model.store.update(task.id, "remove from sublist", p)
+    }
+}
+
+/// What a swipe uncovers: delete (red, on the left, swiping right) or in progress (gold, on the
+/// right, swiping left), bolder once it's far enough to do it.
+struct SwipeBehind: View {
+    let offset: CGFloat
+    let inProgress: Bool
+
+    var body: some View {
+        let reached = abs(offset) >= AppModel.swipeReach
+        ZStack {
+            if offset > 0 {
+                HStack(spacing: 6) {
+                    Image(systemName: "trash")
+                    Text("delete").font(Theme.font(14))
+                }
+                .foregroundStyle(.white)
+                .padding(.leading, 18)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 7).fill(Theme.late.opacity(reached ? 0.95 : 0.6)))
+            } else if offset < 0 {
+                HStack(spacing: 6) {
+                    Text(inProgress ? "back to to-do" : "in progress").font(Theme.font(14))
+                    Image(systemName: inProgress ? "arrow.uturn.backward" : "circle.lefthalf.filled")
+                }
+                .foregroundStyle(.white)
+                .padding(.trailing, 18)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .background(RoundedRectangle(cornerRadius: 7).fill(Theme.accent.opacity(reached ? 1 : 0.6)))
+            }
+        }
+        .animation(.easeOut(duration: 0.12), value: reached)
     }
 }

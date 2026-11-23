@@ -272,7 +272,7 @@ struct Doc {
         if let repeats = p.repeats { e["repeat"] = repeats?.rawValue }
         if let duration = p.duration { e["duration"] = duration.flatMap { $0 > 0 ? $0 : nil } }
         if let subtasks = p.subtasks { e["subtasks"] = subtasks.map(\.entry) }
-        if let event = p.event { e["event"] = event.map { ["id": $0.id, "calendar": $0.calendar] } }
+        if let event = p.event { e["event"] = event.map(\.entry) }
         if let delta = p.spentDelta, delta != 0 { e["spent"] = max(((e["spent"] as? NSNumber)?.intValue ?? 0) + delta, 0) }
         if let order = p.order { e["order"] = Self.number(order) }
         if p.listId != nil || p.sectionId != nil {
@@ -460,6 +460,20 @@ struct Doc {
             layout[id] = nil
             json["layout"] = layout
         }
+    }
+
+    /// Folds one list into another: its tasks (done ones too) go to the other's first section, and
+    /// the list goes.
+    mutating func mergeList(_ id: String, into target: String, now: Date = Date()) {
+        guard id != target, id != ListModel.inbox, id != ListModel.dump, let section = sectionIds[target]?.first else { return }
+        for task in tasks where task.listId == id {
+            var e = self[task: task.id]!
+            e["listId"] = target
+            e["columnId"] = section
+            e["updatedAt"] = Moment.ms(now)
+            self[task: task.id] = e
+        }
+        deleteList(id, keepTasks: true, now: now)
     }
 
     /// Moves a list to come before `before` (or last), among all of them.

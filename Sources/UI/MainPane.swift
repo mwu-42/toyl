@@ -48,12 +48,9 @@ struct Header: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 14) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(model.title(model.place))
-                    .font(Theme.title)
-                    .lineLimit(1)
-                Text(subtitle).font(Theme.meta).foregroundStyle(Theme.secondary).lineLimit(1)
-            }
+            Text(model.title(model.place))
+                .font(Theme.title)
+                .lineLimit(1)
             Spacer(minLength: 10)
             if model.place != .timers {
                 FilterField(model: model)
@@ -67,43 +64,9 @@ struct Header: View {
                 .help("details (⌥⌘I)")
         }
         .padding(.top, 30)
-        .padding(.leading, model.showSidebar ? 30 : 86)
+        .padding(.leading, model.showSidebar || model.panelOrder.filter(model.isShown).first != .tasks ? 30 : 86)
         .padding(.trailing, 22)
         .padding(.bottom, 14)
-        .overlay(alignment: .topLeading) {
-            if !model.showSidebar {
-                Quiet(label: "", symbol: "sidebar.left", size: 15) { model.showSidebar = true }
-                    .padding(.leading, 84).padding(.top, 8)
-            }
-        }
-    }
-
-    private var subtitle: String {
-        let snap = model.snap
-        let now = Date()
-        switch model.place {
-        case .today:
-            let n = Views.tasks(for: .today, in: snap, now: now).count
-            let events = model.calendar.events(on: Day.today(now)).filter { $0.end > now && !$0.allDay }.count
-            var parts = [Format.longDay(Day.today(now), now: now)]
-            parts.append(n == 0 ? "nothing to do" : "\(n) to do")
-            if events > 0 { parts.append("\(events) still to come") }
-            return parts.joined(separator: " · ")
-        case .list(let id):
-            guard let list = snap.list(id) else { return "" }
-            let open = snap.tasks.filter { $0.listId == id && !$0.done }.count
-            let group = list.group.flatMap { g in snap.groups.first { $0.id == g }?.name }
-            return ["\(open) open", group.map { "in " + model.display($0) }, list.archived ? "archived" : nil].compactMap { $0 }.joined(separator: " · ")
-        case .inbox: return "what's not filed yet"
-        case .upcoming: return "what's dated, day by day"
-        case .anytime: return "everything open"
-        case .logbook: return "what's done"
-        case .ideas: return "loose ideas, and what's put off"
-        case .timers: return "focus on a task, or time anything"
-        case .tag(let tag): return "everything tagged #" + tag
-        case .filter(let id): return snap.filters.first { $0.id == id }?.query ?? ""
-        case .search: return "everything"
-        }
     }
 }
 

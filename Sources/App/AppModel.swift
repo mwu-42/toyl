@@ -2,6 +2,21 @@ import AppKit
 import Combine
 import SwiftUI
 
+/// One of the window's panels, which can go in any order.
+enum Panel: String, CaseIterable {
+    case calendar, tasks, details
+
+    static let standard: [Panel] = [.calendar, .tasks, .details]
+
+    var name: String {
+        switch self {
+        case .calendar: return "calendar"
+        case .tasks: return "to-dos"
+        case .details: return "details"
+        }
+    }
+}
+
 /// What the window's showing and doing: the place picked in the sidebar, the tasks selected, the
 /// filter, how each place is sorted and grouped, and every change made from it.
 @MainActor
@@ -37,7 +52,16 @@ final class AppModel: ObservableObject {
     /// How wide the panels are (drag the line between them).
     @Published var sidebarWidth: CGFloat { didSet { defaults.set(Double(sidebarWidth), forKey: "width.sidebar") } }
     @Published var inspectorWidth: CGFloat { didSet { defaults.set(Double(inspectorWidth), forKey: "width.details") } }
-    @Published var calendarWidth: CGFloat { didSet { defaults.set(Double(calendarWidth), forKey: "width.calendar") } }
+    /// The calendar's width, one for each of day, week and month.
+    @Published private var calendarWidths: [String: Double] { didSet { defaults.set(calendarWidths, forKey: "width.calendars") } }
+    var calendarWidth: CGFloat {
+        get { CGFloat(calendarWidths[calendarMode.rawValue] ?? Double(calendarMode.standardWidth)) }
+        set { calendarWidths[calendarMode.rawValue] = Double(newValue) }
+    }
+    /// Day, week or month.
+    @Published var calendarMode: CalendarMode { didSet { defaults.set(calendarMode.rawValue, forKey: "calendarMode"); wantShown() } }
+    /// The window's panels, left to right (each shown or not): drag one by its grip to move it.
+    @Published var panelOrder: [Panel] { didSet { defaults.set(panelOrder.map(\.rawValue), forKey: "panels") } }
     @Published var showDone = false
     /// A sidebar item being renamed: "list:id", "group:id" or "filter:id".
     @Published var renaming: String?
@@ -61,6 +85,20 @@ final class AppModel: ObservableObject {
     @Published var calendarForm: EventForm?
     /// The heading whose + was clicked: a line under it to add a task straight there.
     @Published var addingTo: String?
+    /// The task the pointer's over (for swiping it), and the swipe going on, if one is.
+    var hoveredTask: String?
+    @Published var swipe: Swipe?
+    private var swipeTrack: (id: String, dx: CGFloat, dy: CGFloat, sideways: Bool?)?
+    private var swallowMomentum = false
+    private var swipeWatch: Any?
+
+    struct Swipe: Equatable {
+        var id: String
+        var offset: CGFloat
+    }
+
+    /// How far a swipe goes before it does something.
+    static let swipeReach: CGFloat = 70
 
     private let defaults = UserDefaults.standard
     private var forwarding: [AnyCancellable] = []
@@ -75,10 +113,15 @@ final class AppModel: ObservableObject {
         place = .anytime
         showInspector = defaults.object(forKey: "inspector") as? Bool ?? true
         showSidebar = defaults.object(forKey: "sidebar") as? Bool ?? true
-        showCalendar = defaults.bool(forKey: "calendarPanel")
+        showCalendar = defaults.object(forKey: "calendarPanel") as? Bool ?? true
         sidebarWidth = CGFloat(defaults.object(forKey: "width.sidebar") as? Double ?? 238)
         inspectorWidth = CGFloat(defaults.object(forKey: "width.details") as? Double ?? 322)
-        calendarWidth = CGFloat(defaults.object(forKey: "width.calendar") as? Double ?? 300)
+        var widths = defaults.dictionary(forKey: "width.calendars") as? [String: Double] ?? [:]
+        if widths.isEmpty, let old = defaults.object(forKey: "width.calendar") as? Double { widths["day"] = old }
+        calendarWidths = widths
+        calendarMode = CalendarMode(rawValue: defaults.string(forKey: "calendarMode") ?? "") ?? .day
+        let saved = (defaults.stringArray(forKey: "panels") ?? []).compactMap(Panel.init(rawValue:))
+        panelOrder = Set(saved) == Set(Panel.allCases) && saved.count == Panel.allCases.count ? saved : Panel.standard
         lowercaseAll = defaults.bool(forKey: "lowercaseAll")
         suggestWhileTyping = defaults.object(forKey: "suggest") as? Bool ?? true
         collapsedGroups = Set(defaults.stringArray(forKey: "collapsedGroups") ?? [])
@@ -429,7 +472,7 @@ final class AppModel: ObservableObject {
 
     /// Drops: tasks dragged here (as "toyl:id,id"), or text from anywhere (a task a line).
     func drop(_ items: [String], list: String, section: String?, before: String?) -> Bool {
-        for item in items {
+        for item in items where !item.hasPrefix("toyl-panel:") && !item.hasPrefix("toyl-event:") {
             if item.hasPrefix("toyl:") {
                 let ids = item.dropFirst(5).split(separator: ",").map(String.init).filter { snap.task($0) != nil }
                 guard !ids.isEmpty else { continue }
@@ -522,21 +565,71 @@ final class AppModel: ObservableObject {
 
     var shownDay: String { calendarDay ?? Day.today(timers.now) }
 
-    /// Moves the panel a day (or a week) on or back.
-    func stepDay(_ days: Int) {
-        guard let day = Day.adding(days, to: shownDay) else { return }
-        showDay(day)
+    /// Moves the calendar on or back: a day, a week or a month, as it's showing.
+    func stepDay(_ steps: Int) {
+        let day: String?
+        switch calendarMode {
+        case .day: day = Day.adding(steps, to: shownDay)
+        case .week: day = Day.adding(steps * 7, to: shownDay)
+        case .month: day = Day.date(shownDay).flatMap { Day.calendar.date(byAdding: .month, value: steps, to: $0) }.map(Day.string)
+        }
+        if let day { showDay(day) }
     }
 
     func showDay(_ day: String) {
         calendarDay = day == Day.today() ? nil : day
-        calendar.want(day)
+        wantShown()
+    }
+
+    /// The days the calendar's showing, first to last.
+    var shownDays: [String] {
+        switch calendarMode {
+        case .day: return [shownDay]
+        case .week: return CalendarDays.week(of: shownDay, start: snap.weekStart)
+        case .month: return CalendarDays.month(of: shownDay, start: snap.weekStart)
+        }
+    }
+
+    /// Fetches what's on those days, if they're outside what's loaded.
+    func wantShown() {
+        let days = shownDays
+        guard let first = days.first, let last = days.last else { return }
+        calendar.want(from: first, to: last)
+    }
+
+    // MARK: - panels
+
+    /// Puts `panel` where `target` is (dragged onto it).
+    func movePanel(_ panel: Panel, to target: Panel) {
+        guard panel != target, let to = panelOrder.firstIndex(of: target) else { return }
+        var order = panelOrder.filter { $0 != panel }
+        order.insert(panel, at: min(to, order.count))
+        withAnimation(.snappy(duration: 0.25)) { panelOrder = order }
+    }
+
+    /// Moves `panel` one place left (-1) or right (+1).
+    func nudgePanel(_ panel: Panel, _ by: Int) {
+        guard let from = panelOrder.firstIndex(of: panel) else { return }
+        let to = min(max(from + by, 0), panelOrder.count - 1)
+        guard to != from else { return }
+        var order = panelOrder
+        order.swapAt(from, to)
+        withAnimation(.snappy(duration: 0.25)) { panelOrder = order }
+    }
+
+    /// Whether a panel's showing now.
+    func isShown(_ panel: Panel) -> Bool {
+        switch panel {
+        case .tasks: return true
+        case .calendar: return showCalendar
+        case .details: return showInspector && place != .timers
+        }
     }
 
     /// Tasks dropped on the panel's hours: due that day at that time (and their events follow, if
     /// they're on the calendar). Text dropped there becomes a task at that time.
     func schedule(_ items: [String], day: String, time: String?, keepTime: Bool = false) {
-        for item in items {
+        for item in items where !item.hasPrefix("toyl-panel:") && !item.hasPrefix("toyl-event:") {
             if item.hasPrefix("toyl:") {
                 let ids = item.dropFirst(5).split(separator: ",").map(String.init).filter { snap.task($0) != nil }
                 guard !ids.isEmpty else { continue }
@@ -558,6 +651,106 @@ final class AppModel: ObservableObject {
                 }
             }
         }
+    }
+
+    /// An event dragged from the calendar onto a task: the task follows it (its day, time, length
+    /// and list) and the event stays as it is.
+    @discardableResult
+    func linkEvent(_ items: [String], to taskId: String) -> Bool {
+        guard let item = items.first(where: { $0.hasPrefix("toyl-event:") }) else { return false }
+        let linked = withAnimation(.snappy(duration: 0.25)) { calendar.link(String(item.dropFirst(11)), to: taskId) }
+        if linked {
+            selection = [taskId]
+            anchor = taskId
+            banner = nil
+        }
+        return linked
+    }
+
+    // MARK: - swiping (as Mail does, two fingers on the trackpad)
+
+    /// Watches the trackpad for sideways swipes over a task: left moves it to in progress, right
+    /// deletes it.
+    func watchSwipes() {
+        guard swipeWatch == nil else { return }
+        swipeWatch = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self else { return event }
+            return MainActor.assumeIsolated { self.swiped(event) ? nil : event }
+        }
+    }
+
+    /// A scroll from the trackpad: whether it was a swipe on a task (and so not a scroll).
+    private func swiped(_ event: NSEvent) -> Bool {
+        guard event.hasPreciseScrollingDeltas else { return false }
+        if event.phase.isEmpty, !event.momentumPhase.isEmpty {
+            if event.momentumPhase.contains(.ended) || event.momentumPhase.contains(.cancelled) { defer { swallowMomentum = false }; return swallowMomentum }
+            return swallowMomentum
+        }
+        if event.phase.contains(.began) || event.phase.contains(.mayBegin) {
+            swallowMomentum = false
+            if let id = hoveredTask, editing == nil { swipeTrack = (id, 0, 0, nil) } else { swipeTrack = nil }
+            return false
+        }
+        if event.phase.contains(.changed) {
+            guard var track = swipeTrack else { return false }
+            // The way the fingers went (natural scrolling or not).
+            let dx = event.isDirectionInvertedFromDevice ? event.scrollingDeltaX : -event.scrollingDeltaX
+            track.dx += dx
+            track.dy += abs(event.scrollingDeltaY)
+            if track.sideways == nil {
+                if abs(track.dx) > 10, abs(track.dx) > track.dy * 1.5 { track.sideways = true } else if track.dy > 10 { track.sideways = false }
+            }
+            swipeTrack = track
+            guard track.sideways == true else { return false }
+            swipe = Swipe(id: track.id, offset: min(max(track.dx, -150), 150))
+            return true
+        }
+        if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+            guard let track = swipeTrack else { return false }
+            swipeTrack = nil
+            guard track.sideways == true else { return false }
+            swallowMomentum = true
+            let offset = swipe?.offset ?? track.dx
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { swipe = nil }
+            if offset <= -Self.swipeReach {
+                toggleInProgress(track.id)
+            } else if offset >= Self.swipeReach {
+                withAnimation(.easeInOut(duration: 0.22)) { store.delete([track.id]) }
+                selection.remove(track.id)
+                banner = "deleted · ⌘z puts it back"
+            }
+            return true
+        }
+        return false
+    }
+
+    /// Moves a task into its list's "in progress" section (made if the list hasn't one), or back
+    /// out to the first section if it's there already.
+    func toggleInProgress(_ id: String) {
+        guard let task = snap.task(id), let list = snap.list(task.listId) else { return }
+        let progress = list.sections.first { $0.name.lowercased() == "in progress" }
+        withAnimation(.snappy(duration: 0.25)) {
+            if let progress, task.sectionId == progress.id {
+                let back = list.sections.first { $0.id != progress.id }?.id ?? list.firstSection
+                store.update(id, "out of in progress", { var p = TaskPatch(); p.listId = list.id; p.sectionId = back; return p }())
+            } else if let progress {
+                store.update(id, "in progress", { var p = TaskPatch(); p.listId = list.id; p.sectionId = progress.id; return p }())
+            } else {
+                let section = UID.make()
+                store.change("in progress") { doc in
+                    _ = doc.addSection(to: list.id, name: "in progress", id: section)
+                    var p = TaskPatch()
+                    p.listId = list.id
+                    p.sectionId = section
+                    doc.updateTask(id, p)
+                }
+            }
+        }
+    }
+
+    /// Whether a task's in its list's "in progress" section.
+    func isInProgress(_ task: TaskModel) -> Bool {
+        snap.list(task.listId)?.sections.first { $0.id == task.sectionId }?.name.lowercased() == "in progress"
     }
 
     /// Clears a task's time (it stays due that day).

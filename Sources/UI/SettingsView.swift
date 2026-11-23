@@ -98,18 +98,7 @@ struct SettingsView: View {
                 if !calendar.calendars.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(calendar.calendars) { cal in
-                            HStack(spacing: 8) {
-                                CalendarMark(title: cal.title, color: cal.color).frame(width: 18)
-                                Text(calendarName(cal)).font(Theme.font(15))
-                                if !cal.labels.isEmpty {
-                                    Image(systemName: "tag").font(.system(size: 9)).foregroundStyle(Theme.faint)
-                                    Text("\(cal.labels.count)").font(Theme.font(12.5)).foregroundStyle(Theme.faint)
-                                }
-                                Spacer()
-                                Toggle("", isOn: Binding(get: { calendar.isShown(cal) }, set: { calendar.setShown(cal.id, $0) }))
-                                    .toggleStyle(.switch).controlSize(.mini).labelsHidden()
-                            }
-                            .help(cal.labels.map(\.name).filter { !$0.isEmpty }.joined(separator: ", "))
+                            CalendarSwitch(calendar: calendar, info: cal, name: calendarName(cal))
                         }
                     }
                     .padding(.leading, 28)
@@ -251,6 +240,42 @@ struct SettingsView: View {
                 Quiet(label: "folder", symbol: "folder") { model.reveal(Paths.data) }
             }
         }
+    }
+}
+
+/// A calendar, shown in toyl or not: the whole row is the switch (click anywhere on it).
+struct CalendarSwitch: View {
+    @ObservedObject var calendar: CalendarBridge
+    let info: CalInfo
+    let name: String
+    @Local private var hovering = false
+
+    var body: some View {
+        let on = calendar.shownIds.contains(info.id)
+        Button {
+            calendar.setShown(info.id, !on)
+        } label: {
+            HStack(spacing: 8) {
+                CalendarMark(title: info.title, color: info.color).frame(width: 18)
+                Text(name).font(Theme.font(15)).foregroundStyle(on ? Theme.ink : Theme.secondary)
+                if !info.labels.isEmpty {
+                    Image(systemName: "tag").font(.system(size: 9)).foregroundStyle(Theme.faint)
+                    Text("\(info.labels.count)").font(Theme.font(12.5)).foregroundStyle(Theme.faint)
+                }
+                Spacer()
+                Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 16))
+                    .foregroundStyle(on ? Theme.accent : Theme.faint)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 6)
+            .background(RoundedRectangle(cornerRadius: 7).fill(hovering ? Theme.hover : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(info.labels.map(\.name).filter { !$0.isEmpty }.joined(separator: ", "))
     }
 }
 

@@ -349,7 +349,11 @@ struct TaskDetail: View {
         let bridge = model.calendar
         if !task.done {
             HStack(spacing: 14) {
-                if let link = task.event {
+                if let link = task.event, link.follows {
+                    let event = (bridge.events + bridge.further).first { $0.eventId == link.id && $0.calendarId == link.calendar }
+                    Label("follows " + (event?.title ?? "an event"), systemImage: "link").font(Theme.meta).foregroundStyle(Theme.secondary).lineLimit(1)
+                    Quiet(label: "let go") { bridge.letGo(task) }.help("the event stays on your calendar")
+                } else if let link = task.event {
                     let name = bridge.calendars.first { $0.id == link.calendar }?.title.lowercased() ?? "google calendar"
                     Text("on " + name).font(Theme.meta).foregroundStyle(Theme.secondary)
                     Quiet(label: "take it off") { bridge.unblock(task) }

@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 /// One of the calendar's events, for showing.
 struct CalEvent: Identifiable, Equatable {
@@ -57,6 +58,15 @@ struct EventForm: Identifiable, Equatable {
     var reason = ""
 }
 
+extension GEvent {
+    /// Enough of an event, from how it's shown, to follow it.
+    init?(_ shown: CalEvent) {
+        let start: [String: Any] = shown.allDay ? ["date": Day.string(shown.start)] : ["dateTime": GoogleTime.string(shown.start)]
+        let end: [String: Any] = shown.allDay ? ["date": Day.string(shown.end)] : ["dateTime": GoogleTime.string(shown.end)]
+        self.init(entry: ["id": shown.eventId, "summary": shown.title, "start": start, "end": end], calendarId: shown.calendarId)
+    }
+}
+
 /// Google Calendar, in the window: its events beside your tasks, things added to it the owner's
 /// way (`CalendarRules`), tasks kept in step with their events both ways, and "todo: …" events
 /// made into tasks, so Instinct, Claude or Muse can hand you something by putting it on your
@@ -72,7 +82,11 @@ final class CalendarBridge: ObservableObject {
     }
 
     @Published private(set) var state: State = .setUp
+    /// Every calendar's events (shown or not, so switching one on is instant); `everything(on:)`
+    /// and the rest give the shown ones'.
     @Published private(set) var events: [CalEvent] = []
+    /// The calendars that show, by id.
+    @Published private(set) var shownIds: Set<String> = []
     @Published private(set) var calendars: [CalInfo] = []
     @Published private(set) var rules: CalendarRules
     @Published var note: String?
@@ -89,6 +103,8 @@ final class CalendarBridge: ObservableObject {
     private var refresh: Timer?
     private var soon: Timer?
     private var loading = false
+    /// Asked to reload while it was: once more after.
+    private var again = false
     private var syncing = false
     private var lastCalendars: Date?
     private var lastLoad: Date?
@@ -141,10 +157,9 @@ final class CalendarBridge: ObservableObject {
         var said = defaults.dictionary(forKey: "calendar.shown") as? [String: Bool] ?? [:]
         said[id] = on
         defaults.set(said, forKey: "calendar.shown")
-        objectWillChange.send()
-        further = []
-        furtherRange = nil
-        reload()
+        // Every calendar's events are here already: it shows (or goes) at once.
+        withAnimation(.easeOut(duration: 0.2)) { shownIds = Set(calendars.filter(isShown).map(\.id)) }
+        writeSnapshot()
     }
 
     /// Events called "todo: …" become tasks.
@@ -206,28 +221,33 @@ final class CalendarBridge: ObservableObject {
     /// step and the command line's copy up to date.
     func reload() {
         updateState()
-        guard connected, !loading else { return }
+        guard connected else { return }
+        guard !loading else { again = true; return }
         loading = true
         let wantCalendars = google.isEmpty || (lastCalendars.map { Date().timeIntervalSince($0) > 1800 } ?? true)
         Task { @MainActor in
-            defer { loading = false }
+            defer {
+                loading = false
+                if again {
+                    again = false
+                    reload()
+                }
+            }
             do {
                 if wantCalendars {
                     google = try await GoogleCalendarAPI.calendars()
                     lastCalendars = Date()
                     calendars = google.map { CalInfo(id: $0.id, title: $0.name, color: $0.color, writable: $0.writable, primary: $0.primary,
                                                      shownInGoogle: $0.shownInGoogle, labels: $0.labels) }
+                    shownIds = Set(calendars.filter(isShown).map(\.id))
                 }
                 let (from, to) = Self.loadedRange()
-                let mKey = rules.calendars.first(where: \.dedupe).flatMap { rules.calendar(for: $0, in: google) }?.id
-                let wanted = google.filter { calendar in calendars.first { $0.id == calendar.id }.map(isShown) == true || calendar.id == mKey }
                 var found: [GEvent] = []
-                for calendar in wanted {
+                for calendar in google {
                     if let some = try? await GoogleCalendarAPI.events(calendar.id, from: from, to: to) { found += some }
                 }
                 raw = found
-                let shownIds = Set(calendars.filter(isShown).map(\.id))
-                let fresh = found.filter { $0.status != "cancelled" && shownIds.contains($0.calendarId) }.map(show).sorted { $0.start < $1.start }
+                let fresh = found.filter { $0.status != "cancelled" }.map(show).sorted { $0.start < $1.start }
                 if fresh != events { events = fresh }
                 lastLoad = Date()
                 if note?.hasPrefix("couldn't reach") == true { note = nil }
@@ -271,21 +291,25 @@ final class CalendarBridge: ObservableObject {
         return (from, from.addingTimeInterval(33 * 86400))
     }
 
-    /// The panel's looking at `day`: if it's outside what's loaded, its fortnight is fetched.
-    func want(_ day: String) {
-        guard connected, let date = Day.date(day) else { return }
+    /// The panel's looking at `day`: if it's outside what's loaded, a fortnight round it is fetched.
+    func want(_ day: String) { want(from: day, to: day) }
+
+    /// The panel's looking at these days (a week, a month): if they're outside what's loaded,
+    /// they're fetched, with a week either side.
+    func want(from first: String, to last: String) {
+        guard connected, let start = Day.date(first), let lastDay = Day.date(last) else { return }
+        let end = lastDay.addingTimeInterval(86400)
         let (from, to) = Self.loadedRange()
-        if date >= from, date < to.addingTimeInterval(-86400) { return }
-        if let range = furtherRange, date >= range.from.addingTimeInterval(86400), date < range.to.addingTimeInterval(-86400) { return }
-        let range = (from: date.addingTimeInterval(-7 * 86400), to: date.addingTimeInterval(8 * 86400))
+        if start >= from, end <= to { return }
+        if let range = furtherRange, start >= range.from, end <= range.to { return }
+        let range = (from: start.addingTimeInterval(-7 * 86400), to: end.addingTimeInterval(7 * 86400))
         furtherRange = range
         Task { @MainActor in await fetchFurther(range) }
     }
 
     private func fetchFurther(_ range: (from: Date, to: Date)) async {
-        let shown = google.filter { calendar in calendars.first { $0.id == calendar.id }.map(isShown) == true }
         var found: [GEvent] = []
-        for calendar in shown {
+        for calendar in google {
             if let some = try? await GoogleCalendarAPI.events(calendar.id, from: range.from, to: range.to) { found += some }
         }
         guard furtherRange.map({ $0.from == range.from }) == true else { return }
@@ -304,7 +328,7 @@ final class CalendarBridge: ObservableObject {
     func everything(on day: String) -> [CalEvent] {
         guard let start = Day.date(day), let end = Day.calendar.date(byAdding: .day, value: 1, to: start) else { return [] }
         let loaded = Set(events.map(\.id))
-        return (events + further.filter { !loaded.contains($0.id) }).filter { $0.start < end && $0.end > start }
+        return (events + further.filter { !loaded.contains($0.id) }).filter { $0.start < end && $0.end > start && shownIds.contains($0.calendarId) }
     }
 
     /// Whether a day has anything on (for the panel's week).
@@ -316,7 +340,7 @@ final class CalendarBridge: ObservableObject {
     /// their labels.
     private func writeSnapshot() {
         let now = Date()
-        let soon = events.filter { $0.end > now.addingTimeInterval(-86400) && $0.start < now.addingTimeInterval(15 * 86400) && !rules.skips($0.title) }
+        let soon = events.filter { shownIds.contains($0.calendarId) && $0.end > now.addingTimeInterval(-86400) && $0.start < now.addingTimeInterval(15 * 86400) && !rules.skips($0.title) }
         let json: [String: Any] = [
             "updated": Moment.ms(now),
             "calendars": google.map { calendar -> [String: Any] in
@@ -415,6 +439,7 @@ final class CalendarBridge: ObservableObject {
     /// Takes a task's event off the calendar (asked for), and lets go of it.
     func unblock(_ task: TaskModel) {
         guard let link = task.event else { return }
+        if link.follows { return letGo(task) }
         Task { @MainActor in
             do {
                 try await GoogleCalendarAPI.delete(link.calendar, link.id)
@@ -482,6 +507,7 @@ final class CalendarBridge: ObservableObject {
     }
 
     private func reconcile(_ task: TaskModel, _ event: GEvent) async {
+        if task.event?.follows == true { return follow(task, event) }
         guard let due = task.due else { return }
         var title = CalendarStyle.title(task.title)
         if event.title.hasSuffix("?"), !title.hasSuffix("?") { title += "?" }
@@ -520,6 +546,59 @@ final class CalendarBridge: ObservableObject {
         }
     }
 
+    /// A task that follows its event: the event's day, time and length, whenever they change.
+    /// The event's never written to.
+    private func follow(_ task: TaskModel, _ event: GEvent) {
+        let p = Self.following(event, task: task)
+        guard p.due != nil || p.time != nil || p.duration != nil else { return }
+        store.change("from the calendar", undoable: false) { $0.updateTask(task.id, p) }
+    }
+
+    /// What a task takes from an event it follows (only what differs).
+    static func following(_ event: GEvent, task: TaskModel) -> TaskPatch {
+        var p = TaskPatch()
+        let day = event.day
+        let time = event.allDay ? nil : Day.clock(event.start)
+        if task.due != day { p.due = .some(day) }
+        if task.time != time { p.time = .some(time) }
+        if !event.allDay {
+            let minutes = Int(event.end.timeIntervalSince(event.start) / 60)
+            if minutes > 0, task.duration != minutes { p.duration = .some(minutes) }
+        }
+        return p
+    }
+
+    /// Ties a task to an event dropped on it: the task takes the event's day, time and length,
+    /// and its list if one's named like the event's label or calendar; then follows it. The event
+    /// isn't touched.
+    func link(_ key: String, to taskId: String) -> Bool {
+        let parts = key.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let task = store.snap.task(taskId),
+              let shown = (events + further).first(where: { $0.calendarId == parts[0] && $0.eventId == parts[1] }),
+              let event = raw.first(where: { $0.calendarId == parts[0] && $0.id == parts[1] }) ?? GEvent(shown) else { return false }
+        var p = Self.following(event, task: task)
+        p.event = .some(EventLink(id: event.id, calendar: event.calendarId, follows: true))
+        p.someday = false
+        let snap = store.snap
+        let names = [shown.label, Mark(shown.calendarTitle)?.rest, shown.calendarTitle].compactMap { $0 }.filter { !$0.isEmpty }
+        for name in names {
+            if let list = snap.ownLists.first(where: { $0.bareName.lowercased() == name.lowercased() || $0.name.lowercased() == name.lowercased() }) {
+                if list.id != task.listId { p.listId = list.id }
+                break
+            }
+        }
+        store.change("follow event") { $0.updateTask(taskId, p) }
+        note = nil
+        return true
+    }
+
+    /// Lets go of a task's event without touching the event.
+    func letGo(_ task: TaskModel) {
+        var p = TaskPatch()
+        p.event = .some(nil)
+        store.change("let go of the event") { $0.updateTask(task.id, p) }
+    }
+
     /// Events called "todo: …" (or "toyl: …", "task: …") made into tasks: the words after it read
     /// as quick add reads them, due the event's day (at its time, for as long as it runs). The
     /// event's left as it is.
@@ -529,7 +608,7 @@ final class CalendarBridge: ObservableObject {
         let snap = store.snap
         let linked = Set(snap.tasks.compactMap { $0.event?.id })
         var added = false
-        for event in raw where event.status != "cancelled" && event.taskId == nil && !linked.contains(event.id) && !imported.contains(event.id) {
+        for event in raw where event.status != "cancelled" && shownIds.contains(event.calendarId) && event.taskId == nil && !linked.contains(event.id) && !imported.contains(event.id) {
             let title = event.title
             guard let match = Self.todoPattern.firstMatch(in: title, range: NSRange(location: 0, length: (title as NSString).length)) else { continue }
             var draft = Quick.parse((title as NSString).substring(with: match.range(at: 1)), lists: snap.lists, weekStart: snap.weekStart).draft(source: "calendar")
@@ -555,7 +634,7 @@ final class CalendarBridge: ObservableObject {
     /// `day` (or from now, over the coming week), on the quarter hour.
     func findTime(minutes: Int, on day: String? = nil) -> Date? {
         let now = Date()
-        var busy = raw.filter { !$0.allDay && $0.status != "cancelled" }.map { ($0.start, $0.end) }
+        var busy = raw.filter { !$0.allDay && $0.status != "cancelled" && shownIds.contains($0.calendarId) }.map { ($0.start, $0.end) }
         for task in store.snap.tasks where !task.done && task.time != nil && task.event == nil {
             if let start = task.dueDate, let length = task.duration { busy.append((start, start.addingTimeInterval(Double(length) * 60))) }
         }

@@ -49,6 +49,8 @@ final class PhoneLink: ObservableObject {
     private var lastSeen: [String: Date] = [:]
     private var endPairing: DispatchWorkItem?
     private var tailnetCheck: Timer?
+    /// The task last deleted from the phone, to put back if asked.
+    private var deleted: [String: Any]?
     /// A fixed code and port, for trying it out (`toyl __phone`).
     private let testing: (code: String, port: UInt16)?
 
@@ -264,6 +266,15 @@ final class PhoneLink: ObservableObject {
             var timer: Bool
             var email: Bool
             var sublist: Int
+            var progress: Bool
+        }
+        /// A list and its open tasks.
+        struct Group: Encodable {
+            var id: String
+            var name: String
+            var mark: String?
+            var color: String
+            var tasks: [Task]
         }
         struct List: Encodable {
             var id: String
@@ -286,7 +297,7 @@ final class PhoneLink: ObservableObject {
         }
         var mac: String
         var now: Double
-        var today: [Task]
+        var groups: [Group]
         var inbox: Int
         var lists: [List]
         var timers: [Timer]
@@ -297,14 +308,18 @@ final class PhoneLink: ObservableObject {
 
     func state(at now: Date = Date()) -> State {
         let snap = model.snap
-        let tasks = Views.tasks(for: .today, in: snap, now: now)
-        let groups = Views.groups(tasks, place: .today, mode: .none, sort: model.sortMode(.today), snap: snap, now: now)
+        let open = Views.tasks(for: .anytime, in: snap, now: now)
+        let groups = Views.groups(open, place: .anytime, mode: .list, sort: model.sortMode(.anytime), snap: snap, now: now)
         let timers = model.timers.timers
         let running = Set(timers.compactMap(\.taskId))
         return State(
             mac: PhoneNetwork.computerName,
             now: now.timeIntervalSince1970,
-            today: groups.flatMap(\.tasks).filter { !$0.done }.prefix(40).map { phoneTask($0, snap: snap, now: now, running: running) },
+            groups: groups.compactMap { group -> State.Group? in
+                guard let id = group.listId, let list = snap.list(id), !list.isDump else { return nil }
+                return State.Group(id: id, name: list.isSpecial ? list.displayName : list.bareName, mark: list.isSpecial ? nil : list.mark?.text,
+                                   color: list.color, tasks: group.tasks.filter { !$0.done }.map { phoneTask($0, snap: snap, now: now, running: running) })
+            },
             inbox: snap.tasks.filter { !$0.done && $0.listId == ListModel.inbox }.count,
             lists: snap.sidebarOrder.filter { !$0.archived && !$0.isDump }.map { list in
                 State.List(id: list.id, name: list.isSpecial ? list.displayName : list.bareName, mark: list.isSpecial ? nil : list.mark?.text, color: list.color)
@@ -324,7 +339,7 @@ final class PhoneLink: ObservableObject {
         return State.Task(id: task.id, title: task.title, when: Format.due(task, now: now), late: task.isLate(at: now),
                           list: list.map { $0.isSpecial ? $0.displayName : $0.bareName }, mark: list?.isSpecial == false ? list?.mark?.text : nil,
                           color: list?.color, timer: running.contains(task.id), email: task.isFromEmail,
-                          sublist: task.subtasks.filter { !$0.done }.count)
+                          sublist: task.subtasks.filter { !$0.done }.count, progress: model.isInProgress(task))
     }
 
     struct Parsed: Encodable {
@@ -378,10 +393,21 @@ final class PhoneLink: ObservableObject {
         case "undone":
             guard let t = task() else { return .json(["error": "that's gone"], status: 404) }
             if t.done { model.store.toggle([t.id]) }
-        case "remove":
+        case "remove", "delete":
             guard let t = task() else { return .json(["error": "that's gone"], status: 404) }
+            if verb == "delete" { deleted = model.store.doc[task: t.id] }
             model.store.delete([t.id])
-            said = "taken back"
+            said = verb == "delete" ? "deleted" : "taken back"
+        case "restore":
+            guard let entry = deleted, let id = entry["id"] as? String, model.snap.task(id) == nil else { return .json(["error": "nothing to put back"], status: 404) }
+            deleted = nil
+            model.store.change("put back") { $0[task: id] = entry }
+            said = "put back"
+        case "progress":
+            guard let t = task() else { return .json(["error": "that's gone"], status: 404) }
+            let was = model.isInProgress(t)
+            model.toggleInProgress(t.id)
+            said = was ? "back to to-do" : "in progress"
         case "timer":
             let minutes = (f["minutes"] as? NSNumber)?.doubleValue
             if let minutes, !(minutes > 0 && minutes <= 24 * 60) { return .json(["error": "a timer from a minute to a day"], status: 400) }

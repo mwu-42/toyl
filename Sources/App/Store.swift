@@ -15,7 +15,7 @@ final class Store: ObservableObject {
     /// Told once each change (or one made elsewhere) has landed.
     var onChange: [(Snapshot) -> Void] = []
 
-    private var doc = Doc.blank()
+    private(set) var doc = Doc.blank()
     private var pending = 0
     private var seen: [Int] = []
     private var watcher: DispatchSourceFileSystemObject?

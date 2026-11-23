@@ -76,7 +76,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if !window.setFrameUsingName("toyl.main") { window.center() }
         window.setFrameAutosaveName("toyl.main")
         window.makeKeyAndOrderFront(nil)
-        roomWatch = model.$showCalendar.dropFirst().filter { $0 }.sink { [weak self] _ in DispatchQueue.main.async { self?.makeRoom() } }
+        model.watchSwipes()
+        roomWatch = model.$showCalendar.dropFirst().filter { $0 }.map { _ in () }
+            .merge(with: model.$calendarMode.dropFirst().map { _ in () })
+            .sink { [weak self] _ in DispatchQueue.main.async { self?.makeRoom() } }
         // The list has the keys at first (not the filter field, the first a window would pick).
         DispatchQueue.main.async { [weak self] in
             self?.window.makeFirstResponder(nil)
@@ -218,6 +221,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc func calendarBack() { model.stepDay(-1) }
     @objc func calendarOn() { model.stepDay(1) }
     @objc func calendarToday() { model.showDay(Day.today()) }
+    @objc func calendarDayMode() { model.showCalendar = true; model.calendarMode = .day }
+    @objc func calendarWeekMode() { model.showCalendar = true; model.calendarMode = .week }
+    @objc func calendarMonthMode() { model.showCalendar = true; model.calendarMode = .month }
 
     /// Opening a panel the window hasn't room for widens the window (within the screen), so the
     /// list keeps its room.
@@ -265,6 +271,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if action == #selector(toggleDetails) { item.title = model.showInspector ? "hide details" : "show details" }
         if action == #selector(toggleCalendar) { item.title = model.showCalendar ? "hide calendar" : "show calendar" }
         if [#selector(calendarBack), #selector(calendarOn), #selector(calendarToday)].contains(action) { return model.showCalendar && !typing }
+        if action == #selector(calendarDayMode) { item.state = model.calendarMode == .day ? .on : .off }
+        if action == #selector(calendarWeekMode) { item.state = model.calendarMode == .week ? .on : .off }
+        if action == #selector(calendarMonthMode) { item.state = model.calendarMode == .month ? .on : .off }
         return true
     }
 }
@@ -344,10 +353,14 @@ enum Menus {
             item("hide sidebar", #selector(AppDelegate.toggleSidebar), "s", [.command, .control], target: app),
             item("hide details", #selector(AppDelegate.toggleDetails), "i", [.command, .option], target: app),
             item("show calendar", #selector(AppDelegate.toggleCalendar), "c", [.command, .option], target: app),
-            submenu("calendar day", [
-                item("day before", #selector(AppDelegate.calendarBack), "[", [.command, .option], target: app),
-                item("day after", #selector(AppDelegate.calendarOn), "]", [.command, .option], target: app),
+            submenu("calendar", [
+                item("earlier", #selector(AppDelegate.calendarBack), "[", [.command, .option], target: app),
+                item("later", #selector(AppDelegate.calendarOn), "]", [.command, .option], target: app),
                 item("today", #selector(AppDelegate.calendarToday), target: app),
+                .separator(),
+                item("day", #selector(AppDelegate.calendarDayMode), target: app),
+                item("week", #selector(AppDelegate.calendarWeekMode), target: app),
+                item("month", #selector(AppDelegate.calendarMonthMode), target: app),
             ]),
             .separator(),
             item("enter full screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),

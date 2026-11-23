@@ -104,6 +104,16 @@ struct Subtask: Identifiable, Equatable, Hashable {
 struct EventLink: Equatable, Hashable {
     let id: String          // the event's id in google calendar
     let calendar: String    // its google calendar's id
+    /// The task follows the event (dropped onto it): it takes the event's day, time and list, and
+    /// toyl never changes the event. Otherwise (put on the calendar from toyl) they keep in step
+    /// both ways.
+    var follows = false
+
+    var entry: [String: Any] {
+        var e: [String: Any] = ["id": id, "calendar": calendar]
+        if follows { e["follows"] = true }
+        return e
+    }
 }
 
 /// The email a task was pulled from: which inbox, the message, who sent it, and a link to it.
@@ -217,7 +227,7 @@ struct TaskModel: Identifiable, Equatable, Hashable {
         duration = (e["duration"] as? NSNumber)?.intValue
         spent = (e["spent"] as? NSNumber)?.intValue ?? 0
         if let link = e["event"] as? [String: Any], let id = link["id"] as? String, let calendar = link["calendar"] as? String {
-            event = EventLink(id: id, calendar: calendar)
+            event = EventLink(id: id, calendar: calendar, follows: link["follows"] as? Bool ?? false)
         } else {
             event = nil
         }

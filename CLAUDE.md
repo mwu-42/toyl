@@ -52,7 +52,7 @@ TOYL_HOME=/tmp/t toyl __snapshot today /tmp/today.png   # the window, drawn offs
   - `TimerEngine`, whose wall-clock alarm is copied from Oyl.
   - `MailBridge`: pulls email every ten minutes into the inbox.
   - `PhoneLink`, `PhonePage`, `PhoneServer` (Oyl's, copied): toyl on the iPhone, a home-screen page served on the
-    Wi-Fi or tailnet, for adding tasks and timers. Paired phones only. `toyl __phone <seconds> [picture.png]`
+    Wi-Fi or tailnet, for adding tasks and timers, then the lists. No calendar on the phone. Paired phones only. `toyl __phone <seconds> [picture.png]`
     (with `TOYL_HOME`) serves it on localhost:47659 with the code 123456 and draws it at iPhone size.
   - `CalendarBridge`: Google Calendar in the window. It reads events, keeps linked tasks in step
     both ways, and imports "todo:" events.
@@ -89,7 +89,14 @@ It's the v3 format Oyl's to-do store reads, grown:
 - **Quick, small animations** (0.2–0.4s): a check pops and fades out, new rows slide in, counts roll.
 - **Places**: all (`anytime` inside; first, and where the window opens), inbox, today, ideas (loose ideas and
   anything put off: `someday` in the file), timers. No upcoming or logbook in the window (the command line and
-  agents can still ask for them).
+  agents can still ask for them). **No line of description under a place's title.**
+- **Panels** (`Panel`, `AppModel.panelOrder`): calendar, to-dos, details by default, dragged into any order by
+  the grip at each one's top. The sidebar stays at the left edge.
+- **Calendar**: day, week and month (`CalendarMode`); the today button always shows; events stay clearly
+  colored (past ones barely faded). Dragging an event onto a task ties them one way (`event.follows`): the
+  task takes the event's day, time, length and list, and toyl never writes to that event.
+- **Swipes** (Mail's way): left moves a task into its list's "in progress" section, right deletes it.
+- **Links** show as cards in the details only, never on rows.
 - **Late is quiet**: a soft red date and nothing else. No badges, red headings or red circles.
 - **Sublists, not steps**: a task's sub-items (`subtasks` in the file) are its sublist, always shown under it in
   the list. Setup instructions are indented sublists too, never numbered steps.

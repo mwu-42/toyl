@@ -3,7 +3,8 @@ import AppKit
 /// toyl's iPhone page: what `PhoneLink` serves. Saved to the home screen, it opens full screen like
 /// an app. Adding comes first (a big field, your lists to file into, what it read), then timers
 /// (big buttons for 10m, 30m, 1h, 6h, 24h and a stopwatch; what's running, to pause, add to or
-/// stop), then today's tasks to check off or time. Paper, ink and Times New Roman, in lower case.
+/// stop), then your lists, to check off, time, or swipe (left: in progress; right: delete). No
+/// calendar. Paper, ink and Times New Roman, in lower case.
 enum PhonePage {
     static let html = #"""
     <!doctype html>
@@ -62,8 +63,15 @@ enum PhonePage {
     .timer .controls button.stop { color: var(--ink); }
     .timer.paused .left { color: var(--faint); }
     ul { list-style: none; margin: 0; padding: 0; }
-    li.task { display: flex; align-items: flex-start; gap: 12px; padding: 11px 2px; border-bottom: 1px solid var(--rule); transition: opacity 0.25s, transform 0.25s; }
-    li.task.going { opacity: 0; transform: translateX(10px); }
+    li.task { position: relative; overflow: hidden; border-bottom: 1px solid var(--rule); transition: opacity 0.25s; }
+    li.task.going { opacity: 0; }
+    li.task .front { display: flex; align-items: flex-start; gap: 12px; padding: 11px 2px; background: var(--paper); position: relative; transition: transform 0.22s; }
+    li.task .behind { position: absolute; inset: 0; display: none; align-items: center; padding: 0 18px; color: white; font-size: 17px; }
+    li.task.right .behind { display: flex; justify-content: flex-start; background: rgba(168, 90, 80, 0.6); }
+    li.task.left .behind { display: flex; justify-content: flex-end; background: rgba(151, 141, 121, 0.6); }
+    li.task.right.reached .behind { background: var(--late); }
+    li.task.left.reached .behind { background: var(--accent); }
+    li.task.right .behind .prog, li.task.left .behind .del { display: none; }
     .circle { flex: none; width: 24px; height: 24px; margin-top: 1px; border-radius: 50%; border: 1.4px solid var(--faint); background: transparent; padding: 0; position: relative; transition: transform 0.2s; }
     .circle.done { background: var(--accent); border-color: var(--accent); transform: scale(1.08); }
     .circle.done::after { content: ""; position: absolute; left: 7.5px; top: 3.5px; width: 6px; height: 11px; border: solid white; border-width: 0 2.2px 2.2px 0; transform: rotate(45deg); }
@@ -71,8 +79,15 @@ enum PhonePage {
     .task .name { font-size: 19px; line-height: 1.25; }
     .task .meta { font-size: 14px; color: var(--secondary); margin-top: 2px; }
     .task .meta .late { color: rgba(168, 90, 80, 0.8); }
+    .task .meta .progress { color: var(--accent); }
     .task .clock { flex: none; border: 0; background: transparent; color: var(--faint); padding: 2px 4px; font-size: 15px; }
     .task .clock.running { color: var(--accent); }
+    h2.group { cursor: pointer; justify-content: flex-start; gap: 6px; }
+    h2.group .count { margin-left: auto; }
+    h2.group .name { color: var(--ink); font-weight: bold; font-size: 17px; }
+    h2.group .mark { color: var(--ink); font-size: 17px; }
+    h2.group .fold { color: var(--faint); font-weight: normal; font-size: 12px; }
+    .swipe-hint { color: var(--faint); font-size: 14px; margin: 6px 0 0; }
     .task .timers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
     .faint { color: var(--faint); font-size: 15px; }
     #toast { position: fixed; left: 14px; right: 14px; bottom: calc(env(safe-area-inset-bottom) + 14px); background: var(--ink); color: var(--paper); border-radius: 14px;
@@ -106,9 +121,8 @@ enum PhonePage {
       <div id="timers"></div>
       <div id="presets" class="presets"></div>
       <label class="on-what">on <input id="label" placeholder="anything" autocapitalize="none"></label>
-      <h2>today <span id="todayCount"></span></h2>
-      <ul id="today"></ul>
-      <p id="inbox" class="faint"></p>
+      <div id="groups"></div>
+      <p class="swipe-hint">swipe left: in progress · swipe right: delete</p>
       <p id="hint" hidden>share › add to home screen <button id="hintClose" aria-label="close">×</button></p>
     </main>
     <main id="pair" hidden>
@@ -186,10 +200,9 @@ enum PhonePage {
       drawLists();
       drawPresets();
       drawTimers();
-      drawToday();
+      drawGroups();
       $("ringing").hidden = !state.ringing;
       if (state.ringing) $("ringText").textContent = `${state.ringing}: done`;
-      $("inbox").textContent = state.inbox ? `${state.inbox} in the inbox` : "";
     }
 
     // adding
@@ -288,7 +301,7 @@ enum PhonePage {
         show((await api("/api/do", body)).state);
         $("label").value = "";
         timerFor = null;
-        drawToday();
+        drawGroups();
       } catch (error) { if (error.said) say(error.message); }
     }
 
@@ -364,44 +377,136 @@ enum PhonePage {
     $("ringOk").addEventListener("click", () => act({ do: "dismiss" }));
     $("ringMore").addEventListener("click", () => act({ do: "snooze" }));
 
-    // today
+    // lists
 
-    function drawToday() {
-      const box = $("today");
+    let folded = new Set(read("toyl.folded", []));
+    let touching = false, stale = false;
+
+    function drawGroups() {
+      if (touching) { stale = true; return; }
+      const box = $("groups");
       box.replaceChildren();
-      $("todayCount").textContent = state.today.length ? String(state.today.length) : "";
-      if (!state.today.length) box.append(el("li", "faint", "nothing due today"));
-      for (const task of state.today) {
-        const row = el("li", "task");
-        const circle = el("button", "circle");
-        circle.setAttribute("aria-label", "check off");
-        circle.addEventListener("click", () => check(task, row, circle));
-        const body = el("div", "body");
-        body.append(el("div", "name", task.title));
-        const meta = el("div", "meta");
-        const parts = [];
-        if (task.when) { const when = el("span", task.late ? "late" : "", task.when); parts.push(when); }
-        if (task.list && task.list !== "inbox") parts.push(document.createTextNode((task.mark ? task.mark + " " : "") + task.list.toLowerCase()));
-        if (task.email) parts.push(document.createTextNode("✉ email"));
-        if (task.sublist) parts.push(document.createTextNode(`${task.sublist} in its sublist`));
-        parts.forEach((part, index) => { if (index) meta.append(document.createTextNode("  ·  ")); meta.append(part); });
-        if (parts.length) body.append(meta);
-        if (timerFor === task.id) {
-          const lengths = el("div", "timers");
-          for (const minutes of state.presets) {
-            const button = el("button", "preset small", length(minutes));
-            button.addEventListener("click", () => startTimer({ minutes }, task.id));
-            lengths.append(button);
-          }
-          const watch = el("button", "preset small", "stopwatch");
-          watch.addEventListener("click", () => startTimer({ stopwatch: true }, task.id));
-          lengths.append(watch);
-          body.append(lengths);
+      for (const group of state.groups) {
+        const head = el("h2", "group");
+        if (group.mark) {
+          const mark = el("span", "mark", group.mark);
+          if (!/\p{Extended_Pictographic}/u.test(group.mark)) mark.style.color = group.color;
+          head.append(mark);
         }
-        const time = el("button", "clock" + (task.timer ? " running" : ""), task.timer ? "timing" : "timer");
-        time.addEventListener("click", () => { timerFor = timerFor === task.id ? null : task.id; drawToday(); });
-        row.append(circle, body, time);
-        box.append(row);
+        head.append(el("span", "name", group.name.toLowerCase()));
+        const isFolded = folded.has(group.id);
+        head.append(el("span", "fold", isFolded ? "›" : "⌄"), el("span", "count", group.tasks.length ? String(group.tasks.length) : ""));
+        head.addEventListener("click", () => {
+          if (folded.has(group.id)) folded.delete(group.id); else folded.add(group.id);
+          keep("toyl.folded", [...folded]);
+          drawGroups();
+        });
+        box.append(head);
+        if (isFolded) continue;
+        const list = el("ul");
+        for (const task of group.tasks) list.append(taskRow(task));
+        box.append(list);
+      }
+    }
+
+    function taskRow(task) {
+      const row = el("li", "task");
+      const behind = el("div", "behind");
+      behind.append(el("span", "del", "delete"), el("span", "prog", task.progress ? "back to to-do" : "in progress"));
+      const front = el("div", "front");
+      const circle = el("button", "circle");
+      circle.setAttribute("aria-label", "check off");
+      circle.addEventListener("click", () => check(task, row, circle));
+      const body = el("div", "body");
+      body.append(el("div", "name", task.title));
+      const meta = el("div", "meta");
+      const parts = [];
+      if (task.progress) parts.push(el("span", "progress", "◐ in progress"));
+      if (task.when) parts.push(el("span", task.late ? "late" : "", task.when));
+      if (task.email) parts.push(document.createTextNode("✉ email"));
+      if (task.sublist) parts.push(document.createTextNode(`${task.sublist} in its sublist`));
+      parts.forEach((part, index) => { if (index) meta.append(document.createTextNode("  ·  ")); meta.append(part); });
+      if (parts.length) body.append(meta);
+      if (timerFor === task.id) {
+        const lengths = el("div", "timers");
+        for (const minutes of state.presets) {
+          const button = el("button", "preset small", length(minutes));
+          button.addEventListener("click", () => startTimer({ minutes }, task.id));
+          lengths.append(button);
+        }
+        const watch = el("button", "preset small", "stopwatch");
+        watch.addEventListener("click", () => startTimer({ stopwatch: true }, task.id));
+        lengths.append(watch);
+        body.append(lengths);
+      }
+      const time = el("button", "clock" + (task.timer ? " running" : ""), task.timer ? "timing" : "timer");
+      time.addEventListener("click", () => { timerFor = timerFor === task.id ? null : task.id; drawGroups(); });
+      front.append(circle, body, time);
+      row.append(behind, front);
+      swipeable(row, front, task);
+      return row;
+    }
+
+    // Swiping, as Apple's lists do: left for in progress, right to delete.
+    function swipeable(row, front, task) {
+      let x0 = 0, y0 = 0, dx = 0, sideways = null;
+      row.addEventListener("touchstart", (event) => {
+        const touch = event.touches[0];
+        x0 = touch.clientX; y0 = touch.clientY; dx = 0; sideways = null;
+        touching = true;
+        front.style.transition = "none";
+      }, { passive: true });
+      row.addEventListener("touchmove", (event) => {
+        const touch = event.touches[0], mx = touch.clientX - x0, my = touch.clientY - y0;
+        if (sideways === null) {
+          if (Math.abs(mx) > 10 && Math.abs(mx) > Math.abs(my) * 1.3) sideways = true;
+          else if (Math.abs(my) > 10) sideways = false;
+        }
+        if (!sideways) return;
+        event.preventDefault();
+        dx = Math.max(Math.min(mx, 170), -170);
+        front.style.transform = `translateX(${dx}px)`;
+        row.classList.toggle("right", dx > 0);
+        row.classList.toggle("left", dx < 0);
+        row.classList.toggle("reached", Math.abs(dx) >= 80);
+      }, { passive: false });
+      const finish = () => {
+        front.style.transition = "transform 0.22s";
+        if (sideways && dx <= -80) {
+          front.style.transform = "";
+          progress(task);
+        } else if (sideways && dx >= 80) {
+          front.style.transform = "translateX(110%)";
+          remove(task, row, front);
+        } else {
+          front.style.transform = "";
+        }
+        setTimeout(() => row.classList.remove("left", "right", "reached"), 230);
+        touching = false;
+        if (stale) { stale = false; setTimeout(drawGroups, 260); }
+      };
+      row.addEventListener("touchend", finish);
+      row.addEventListener("touchcancel", finish);
+    }
+
+    async function progress(task) {
+      try {
+        const done = await api("/api/do", { do: "progress", id: task.id });
+        show(done.state);
+        say(done.said);
+      } catch (error) { if (error.said) say(error.message); }
+    }
+
+    async function remove(task, row, front) {
+      row.classList.add("going");
+      try {
+        const done = await api("/api/do", { do: "delete", id: task.id });
+        setTimeout(() => show(done.state), 240);
+        say("deleted", async () => { try { show((await api("/api/do", { do: "restore" })).state); say("put back"); } catch (e) {} });
+      } catch (error) {
+        row.classList.remove("going");
+        front.style.transform = "";
+        if (error.said) say(error.message);
       }
     }
 

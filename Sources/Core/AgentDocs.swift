@@ -29,7 +29,8 @@ enum AgentDocs {
            - `toyl today`, `toyl inbox`, `toyl upcoming`, `toyl ls [filter]`, `toyl show <id>`, `toyl lists`, `toyl tags`, `toyl agenda`
            - `toyl add "essay draft fri 5pm #cs ~2h"` (read as quick add reads it, below)
            - `toyl done <id or title>`, `toyl undo <id>`, `toyl rm <id>`
-           - `toyl edit <id> --title … --due fri --time 17:00 --aim "next week" --list cs --tag +reading -old --notes … --pin --someday --repeat weekly --duration 45m`
+           - `toyl edit <id> --title … --due fri --time 17:00 --list cs --tag +reading -old --notes … --pin --someday --repeat weekly --duration 45m`
+           - `toyl merge <list> [into]`: fold one list into another (the inbox, if none's named)
            - `toyl timer start <id> [25m]`, `toyl timer stop`, `toyl timers`
            - `toyl new-list "name" [--group school]`, `toyl autosort [--apply]`
            - `toyl cal` (calendars and labels), `toyl cal suggest <task>`, `toyl cal add <title> --cal a --label "cs 106b" --day fri --start 3pm --end 4pm` \
@@ -67,6 +68,10 @@ enum AgentDocs {
         day, the start and end (or all day) and the placement, answering with questions instead. Ask the owner those \
         questions; never guess a day, a time, a length or a calendar. `list_calendars` and `suggest_calendar_placement` \
         help. An event titled "todo: something" becomes a task the next time the app reads the calendar.
+
+        A task's `event` is `{id, calendar}` when toyl put it on the calendar (they keep in step both ways), or \
+        `{id, calendar, follows: true}` when the owner tied it to an existing event by dragging the event onto it: \
+        then the task takes the event's day, time and length, and toyl never changes that event.
 
         ## Email
 
