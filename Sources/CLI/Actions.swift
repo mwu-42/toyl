@@ -358,6 +358,22 @@ extension Actions {
     /// Plans an event the owner's way (CALENDAR.md) and, if nothing's missing and `apply`, adds
     /// it (taking any copy off m) and ties its task to it. What's still needed comes back as
     /// questions instead.
+    /// Pulls what's due from Canvas into the list (unless `apply` is false).
+    static func pullCanvas(apply: Bool) throws -> Canvas.Outcome {
+        let settings = CanvasSettings.load()
+        guard Canvas.isConnected else { throw Ops.Failure("canvas isn't connected: toyl canvas token <token> (or feed <address>)") }
+        let items = try waitFor { try await Canvas.upcoming(settings) }
+        let snap = try snapshot()
+        let outcome = Canvas.plan(items, snap: snap, settings: settings)
+        guard apply else { return outcome }
+        if !outcome.drafts.isEmpty || !outcome.patches.isEmpty || !outcome.finish.isEmpty {
+            let ids = outcome.drafts.map { _ in UID.make() }
+            _ = try save { Canvas.apply(outcome, ids: ids, to: &$0) }
+        }
+        Canvas.finish(outcome)
+        return outcome
+    }
+
     /// Pulls important email from the inboxes that are on; adds them (unless `apply` is false).
     static func pullMail(apply: Bool) throws -> MailPull.Outcome {
         let snap = try snapshot()

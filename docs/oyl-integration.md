@@ -112,6 +112,7 @@ Keep every field you don't know. The format is the v3 format `TodStore.Boards` a
     and the task takes the event's day and time
   - `source?`: where it came from (`toyl`, `iphone`, `email`, `calendar`, `cli`, `mcp`, `link`, `drop`…)
   - `email?: {account, id, from, subject, link?}`: the email it was pulled from (`source: "email"`)
+  - `canvas?: {id, course, url?}`: the Canvas assignment it's for (`source: "canvas"`)
   - `target?` (an aim): toyl no longer sets or shows it, but keep it
   - Oyl's own `kept`, `repeat`, `repeated` and `repeatOf` are kept. toyl brings a repeating task back the same
     way Oyl does, and marks the done one `repeated`.

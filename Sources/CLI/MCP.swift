@@ -219,6 +219,9 @@ enum Tools {
                          "task_id": string("the toyl task it's for (it's then tied to it)"), "tentative": bool("adds \"?\" to the title"),
                          "dry_run": bool("check and describe it without adding")]),
                  idempotent: false),
+            tool("pull_canvas", "pull assignments from canvas",
+                 "Reads the owner's Canvas (if they've connected it) and brings what's due into toyl: each new assignment, quiz or graded discussion becomes a task due when Canvas says, in the list named like its course (else the inbox), with its Canvas link in the notes and a canvas field. Due dates Canvas moved move the task; ones submitted on Canvas are checked off.",
+                 object(["dry_run": bool("say what would change, without changing it")]), idempotent: false),
             tool("pull_email", "pull important email",
                  "Checks the user's Gmail and Outlook (whichever they've turned on in toyl) for important mail and adds each as an inbox task flagged as from email (source \"email\", with an email link). Only what needs doing: a package to pick up (like a QTrak notice), something due, something to sign, pay, submit or answer. Newsletters, receipts and codes are left alone. Each message is judged once.",
                  object(["dry_run": bool("say what would be added, without adding it")]), idempotent: false),
@@ -395,6 +398,10 @@ enum Tools {
                 out["would_add"] = result.outcome.plans.map { CalendarPlanner.describe($0, calendars: result.calendars, rules: rules) }
             }
             return out
+        case "pull_canvas":
+            let dry = a["dry_run"] as? Bool ?? false
+            let outcome = try Actions.pullCanvas(apply: !dry)
+            return [(dry ? "would_add" : "added"): outcome.added, "moved": outcome.moved, "done_on_canvas": outcome.done]
         case "pull_email":
             let dry = a["dry_run"] as? Bool ?? false
             let outcome = try Actions.pullMail(apply: !dry)

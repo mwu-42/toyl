@@ -6,7 +6,7 @@ enum CLI {
     static let commands: Set<String> = [
         "help", "today", "inbox", "upcoming", "anytime", "all", "someday", "logbook", "ideas", "ls", "list", "search", "show",
         "add", "idea", "done", "undo", "undone", "rm", "delete", "edit", "lists", "tags", "new-list", "agenda", "overview",
-        "timer", "timers", "autosort", "md", "json", "path", "agents", "open", "mcp", "version", "connect", "google", "cal", "mail", "merge",
+        "timer", "timers", "autosort", "md", "json", "path", "agents", "open", "mcp", "version", "connect", "google", "cal", "mail", "merge", "canvas",
         "--help", "-h", "--version",
     ]
 
@@ -53,6 +53,7 @@ enum CLI {
             case "google": try google(args)
             case "mail": try mail(args)
             case "merge": try merge(args)
+            case "canvas": try canvas(args)
             case "cal":
                 switch try cal(args) {
                 case .needs: return 3
@@ -366,6 +367,58 @@ enum CLI {
         }
     }
 
+    /// Canvas: `toyl canvas` (how it's set), `toyl canvas pull [--dry-run]`, `toyl canvas token <t>`,
+    /// `toyl canvas feed <address>`, `toyl canvas site <canvas.school.edu>`, `toyl canvas on|off|forget`.
+    private static func canvas(_ args: Args) throws {
+        var words = args.positional
+        let what = words.isEmpty ? "status" : words.removeFirst()
+        var settings = CanvasSettings.load()
+        switch what {
+        case "pull":
+            let outcome = try Actions.pullCanvas(apply: !args.has("dry-run"))
+            if args.has("json") {
+                return print(Ops.text(["added": outcome.added, "moved": outcome.moved, "done": outcome.done, "errors": outcome.errors]))
+            }
+            for error in outcome.errors { print("✕ " + error) }
+            let verb = args.has("dry-run") ? "would add" : "added"
+            for title in outcome.added { print("\(verb): \(title)") }
+            for title in outcome.moved { print("moved: \(title)") }
+            for title in outcome.done { print("done on canvas: \(title)") }
+            if outcome.errors.isEmpty, outcome.added.isEmpty, outcome.moved.isEmpty, outcome.done.isEmpty { print("nothing new from canvas") }
+        case "token":
+            guard let token = words.first else { throw Ops.Failure("toyl canvas token <token>") }
+            Canvas.setToken(token)
+            settings.on = true
+            settings.save()
+            print("canvas token saved (in toyl-private). now: toyl canvas pull")
+        case "feed":
+            guard let feed = words.first else { throw Ops.Failure("toyl canvas feed <address>") }
+            Canvas.setFeed(feed)
+            settings.on = true
+            settings.save()
+            print("canvas feed saved (in toyl-private). now: toyl canvas pull")
+        case "site":
+            guard let site = words.first else { throw Ops.Failure("toyl canvas site <canvas.school.edu>") }
+            settings.site = Canvas.site(from: site)
+            settings.save()
+            print("canvas: " + settings.site)
+        case "on", "off":
+            settings.on = what == "on"
+            settings.save()
+            print("canvas " + what)
+        case "forget":
+            Canvas.forget()
+            settings.on = false
+            settings.save()
+            print("canvas forgotten")
+        default:
+            let how = Canvas.token != nil ? "a token" : Canvas.feed != nil ? "its calendar feed" : "nothing yet (toyl canvas token <t>)"
+            if args.has("json") { return print(Ops.text(["on": settings.on, "site": settings.site, "connected": Canvas.isConnected])) }
+            print("canvas: \(settings.on ? "on" : "off") · \(settings.site) · by \(how)")
+            print("last pulled: " + (settings.lastPull.map { GoogleTime.string($0) } ?? "never"))
+        }
+    }
+
     /// `toyl merge <list> [into]`: one list folded into another (the inbox, if none's named): its
     /// tasks move over and the list goes.
     private static func merge(_ args: Args) throws {
@@ -593,6 +646,7 @@ enum CLI {
           toyl all|today|inbox|ideas [filter]   (and upcoming, logbook)
           toyl mail [pull [--dry-run]|gmail on|off|outlook client <id>|outlook connect|ask on|off]
           toyl merge <list> [into]        fold a list into another (the inbox, if none)
+          toyl canvas [pull [--dry-run]|token <t>|feed <address>|site <canvas.school.edu>|on|off|forget]
           toyl ls <filter>             e.g. toyl ls "#school due:week", toyl ls essay is:all
           toyl show <id|title>
           toyl add <text>              e.g. toyl add "essay draft fri 5pm #cs ~2h /timer 25m"

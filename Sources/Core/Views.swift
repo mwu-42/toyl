@@ -108,6 +108,8 @@ enum SortMode: String, CaseIterable, Identifiable {
 enum GroupMode: String, CaseIterable, Identifiable {
     case none, section, list, day, tag
     var id: String { rawValue }
+    /// What the window offers (sections aren't shown any more: a list is one list).
+    static let offered: [GroupMode] = [.none, .list, .day, .tag]
     var name: String {
         switch self {
         case .none: return "nothing"
@@ -145,7 +147,7 @@ enum Views {
 
     static func defaultGroup(_ place: Place) -> GroupMode {
         switch place {
-        case .inbox, .list: return .section
+        case .inbox, .list: return .none
         case .upcoming: return .day
         case .anytime, .ideas, .tag, .filter, .search: return .list
         case .today, .logbook, .timers: return .none
@@ -547,6 +549,7 @@ struct Query: Equatable {
             case "idea": has = t.isIdea
             case "inbox": has = t.listId == ListModel.inbox
             case "email", "mail": has = t.isFromEmail
+            case "canvas": has = t.canvas != nil || t.source == "canvas"
             case "late", "overdue": has = t.isLate(at: now)
             case "slipped": has = t.hasSlipped(at: now)
             case "stale": has = t.day == nil && now.timeIntervalSince(t.kept ?? t.createdAt) > 30 * 86400

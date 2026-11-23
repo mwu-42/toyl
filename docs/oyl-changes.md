@@ -14,3 +14,14 @@ tasks (`source: "email"`, `email`), toyl's timer lengths (10m, 30m, 1h, 6h, 24h;
 page on port 47650, and `calendar.json` holding only the calendars shown in toyl.
 
 When it's done, write `1` into `~/Oyl/.toyl-sync`.
+
+## 2 · 2026-11-23 · tasks from Canvas, and no sections in toyl's window
+
+- toyl can now bring assignments in from Canvas. Such a task has `source: "canvas"` and a new field,
+  `canvas: {id, course, url}` (keep it, as every field). Its notes are the Canvas link. Where Oyl lists toyl's
+  tasks it may mark these (a 🎓, or the course), but it doesn't have to.
+- toyl's window no longer shows sections: a list is one list. They're still in the file (the "in progress" one
+  included) and Oyl can treat them as it does now.
+- toyl's quick entry from anywhere is ⌘⌥X now (it was ⌃⌥T). If Oyl ever mentions toyl's shortcut, use the new one.
+
+When it's taken in, write `2` into `~/Oyl/.toyl-sync`.

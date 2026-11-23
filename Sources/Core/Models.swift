@@ -148,6 +148,32 @@ struct MailLink: Equatable, Hashable {
     }
 }
 
+/// The Canvas assignment a task is for: its id there (kind and number), its course, and its page.
+struct CanvasLink: Equatable, Hashable {
+    let id: String          // "assignment:123", "quiz:45", "discussion_topic:67"
+    let course: String
+    let url: String?
+
+    var entry: [String: Any] {
+        var e: [String: Any] = ["id": id, "course": course]
+        if let url { e["url"] = url }
+        return e
+    }
+
+    init(id: String, course: String, url: String?) {
+        self.id = id
+        self.course = course
+        self.url = url
+    }
+
+    init?(entry e: Any?) {
+        guard let e = e as? [String: Any], let id = e["id"] as? String else { return nil }
+        self.id = id
+        course = e["course"] as? String ?? ""
+        url = e["url"] as? String
+    }
+}
+
 struct TaskModel: Identifiable, Equatable, Hashable {
     let id: String
     var listId: String
@@ -175,6 +201,8 @@ struct TaskModel: Identifiable, Equatable, Hashable {
     /// The email it came from, if it was pulled from one.
     var email: MailLink?
     var isFromEmail: Bool { email != nil || source == "email" }
+    /// The Canvas assignment it's for, if it came from Canvas.
+    var canvas: CanvasLink?
     /// The task this one came back from, if it's the next of a repeating one.
     var repeatOf: String?
 
@@ -233,6 +261,7 @@ struct TaskModel: Identifiable, Equatable, Hashable {
         }
         source = e["source"] as? String
         email = MailLink(entry: e["email"])
+        canvas = CanvasLink(entry: e["canvas"])
         repeatOf = e["repeatOf"] as? String
     }
 

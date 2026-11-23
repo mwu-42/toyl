@@ -52,7 +52,7 @@ TOYL_HOME=/tmp/t toyl __snapshot today /tmp/today.png   # the window, drawn offs
     latest file. It watches the folder and handles undo.
   - `AppModel`: UI state and actions.
   - `TimerEngine`, whose wall-clock alarm is copied from Oyl.
-  - `MailBridge`: pulls email every ten minutes into the inbox.
+  - `MailBridge`: pulls email every ten minutes into the inbox. `CanvasBridge`: Canvas every half hour.
   - `PhoneLink`, `PhonePage`, `PhoneServer` (Oyl's, copied): toyl on the iPhone, a home-screen page served on the
     Wi-Fi or tailnet, for adding tasks and timers, then the lists. No calendar on the phone. Paired phones only. `toyl __phone <seconds> [picture.png]`
     (with `TOYL_HOME`) serves it on localhost:47659 with the code 123456 and draws it at iPhone size.
@@ -105,6 +105,10 @@ It's the v3 format Oyl's to-do store reads, grown:
   task takes the event's day, time, length and list, and toyl never writes to that event.
 - **Swipes** (Mail's way): right moves a task into its list's "in progress" section, left deletes it.
 - **Links** show as cards in the details only, never on rows.
+- **No sections in the window**: a list is one list (no "group by section", no "add a section"). Sections still
+  exist in the file; "in progress" (swipe right) is one, shown as a ◐ on the task.
+- **Canvas** (`Canvas`, `CanvasBridge`): planner API with the owner's token (knows what's submitted), or the
+  calendar feed. Tasks carry `canvas: {id, course, url}`, `source: "canvas"`; the course picks the list.
 - **Late is quiet**: a soft red date and nothing else. No badges, red headings or red circles.
 - **Sublists, not steps**: a task's sub-items (`subtasks` in the file) are its sublist, always shown under it in
   the list. Setup instructions are indented sublists too, never numbered steps.

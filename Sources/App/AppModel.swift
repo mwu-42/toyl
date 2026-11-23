@@ -26,6 +26,7 @@ final class AppModel: ObservableObject {
     let timers: TimerEngine
     let calendar: CalendarBridge
     let mail: MailBridge
+    let canvas: CanvasBridge
     /// toyl on your iPhone (see `PhoneLink`).
     private(set) var phone: PhoneLink!
 
@@ -123,6 +124,7 @@ final class AppModel: ObservableObject {
         self.timers = timers
         self.calendar = calendar
         mail = MailBridge(store: store, calendar: calendar)
+        canvas = CanvasBridge(store: store)
         // The window opens on all.
         place = .anytime
         showInspector = defaults.object(forKey: "inspector") as? Bool ?? true
@@ -149,6 +151,7 @@ final class AppModel: ObservableObject {
             timers.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() },
             calendar.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() },
             mail.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() },
+            canvas.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() },
         ]
         if case .list(let id) = place, store.snap.list(id) == nil { place = .today }
         // Upcoming and logbook aren't places in the window any more.
@@ -164,7 +167,10 @@ final class AppModel: ObservableObject {
     // MARK: - what's shown
 
     func sortMode(_ place: Place) -> SortMode { sorts[place.key].flatMap(SortMode.init(rawValue:)) ?? Views.defaultSort(place) }
-    func groupMode(_ place: Place) -> GroupMode { groupings[place.key].flatMap(GroupMode.init(rawValue:)) ?? Views.defaultGroup(place) }
+    func groupMode(_ place: Place) -> GroupMode {
+        let said = groupings[place.key].flatMap(GroupMode.init(rawValue:))
+        return said == .section ? .none : said ?? Views.defaultGroup(place)
+    }
 
     func setSort(_ mode: SortMode, for place: Place) {
         sorts[place.key] = mode.rawValue

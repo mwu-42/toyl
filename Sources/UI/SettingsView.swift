@@ -21,6 +21,8 @@ struct SettingsView: View {
                 Hairline()
                 MailSection(model: model, mail: model.mail, calendar: calendar)
                 Hairline()
+                CanvasSection(canvas: model.canvas)
+                Hairline()
                 PhoneSection(phone: model.phone)
                 Hairline()
                 agentsSection
@@ -361,6 +363,74 @@ struct MailSection: View {
     private func save() {
         bad = !mail.saveOutlookClient(clientText.trimmingCharacters(in: .whitespacesAndNewlines))
         if !bad { clientText = ""; mail.connectOutlook() }
+    }
+
+    private func open(_ link: String) -> some View {
+        Quiet(label: "open", symbol: "arrow.up.right") { if let url = URL(string: link) { NSWorkspace.shared.open(url) } }
+    }
+
+    private func line<Trailing: View>(_ icon: String, _ words: String, hint: String? = nil, @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: icon).font(.system(size: 12)).foregroundStyle(Theme.secondary).frame(width: 18)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(words).font(Theme.font(15))
+                if let hint { Text(hint).font(Theme.font(12.5)).foregroundStyle(Theme.faint) }
+            }
+            Spacer(minLength: 8)
+            trailing()
+        }
+    }
+}
+
+/// Canvas: assignments as tasks, due when Canvas says, in the course's list.
+struct CanvasSection: View {
+    @ObservedObject var canvas: CanvasBridge
+    @Local private var text = ""
+    @Local private var site = ""
+    @Local private var bad = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label { Text("canvas").font(Theme.font(19, bold: true)) } icon: { Image(systemName: "graduationcap").foregroundStyle(Theme.accent) }
+            line("checklist", "assignments as tasks", hint: "due when canvas says, in the course's list") {
+                Toggle("", isOn: Binding(get: { canvas.settings.on }, set: { canvas.setOn($0) })).toggleStyle(.switch).controlSize(.small).labelsHidden()
+                    .disabled(!canvas.connected)
+            }
+            line("checkmark.circle", "submitted there, done here", hint: "moved there, moved here") { EmptyView() }
+            line("building.columns", canvas.settings.site.replacingOccurrences(of: "https://", with: "")) {
+                PlainField(text: $site, placeholder: "another school", font: Theme.nsFont(13.5), onSubmit: { canvas.setSite(site); site = "" })
+                    .frame(width: 150, height: 17)
+            }
+            if canvas.connected {
+                line("link", "connected " + canvas.how) { Quiet(label: "forget") { canvas.forget() } }
+                line("arrow.clockwise", canvas.busy ? "pulling…" : "pulled " + canvas.lastPulled) {
+                    Quiet(label: "pull now", tint: Theme.ink) { canvas.pull() }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    line("person.crop.circle", "canvas › account › settings") { open(canvas.settings.site + "/profile/settings") }
+                    line("key", "new access token, then paste it") { EmptyView() }
+                    line("calendar", "or: calendar › calendar feed address") { EmptyView() }
+                    HStack(spacing: 10) {
+                        PlainField(text: $text, placeholder: "token or feed", font: Theme.nsFont(14), onSubmit: save)
+                            .frame(height: 18)
+                            .padding(.horizontal, 8).padding(.vertical, 5)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(Theme.field))
+                        Quiet(label: "connect", symbol: "link", tint: Theme.ink, action: save)
+                    }
+                    if bad { Text("that doesn't look like either").font(Theme.small).foregroundStyle(Theme.secondary) }
+                }
+                .padding(.leading, 28)
+            }
+            if let said = canvas.said {
+                Label(said, systemImage: "info.circle").font(Theme.small).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func save() {
+        bad = !canvas.connect(text)
+        if !bad { text = "" }
     }
 
     private func open(_ link: String) -> some View {

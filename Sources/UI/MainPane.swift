@@ -14,6 +14,7 @@ struct MainPane: View {
                 if let trouble = model.store.trouble { Notice(text: trouble, tint: Theme.late) }
                 if let note = model.calendar.note { Notice(text: note, tint: Theme.secondary) { model.calendar.note = nil } }
                 if let said = model.mail.said { Notice(text: said, tint: Theme.secondary) { model.mail.said = nil } }
+                if let said = model.canvas.said { Notice(text: said, tint: Theme.secondary) { model.canvas.said = nil } }
                 if let banner = model.banner { Notice(text: banner, tint: Theme.secondary) { model.banner = nil } }
                 if model.showAutosort { AutosortPanel(model: model) }
                 TaskListView(model: model)
@@ -105,7 +106,7 @@ struct ViewMenu: View {
                 ForEach(SortMode.allCases) { Text($0.name).tag($0) }
             }
             Picker("group by", selection: Binding(get: { model.groupMode(place) }, set: { model.setGroup($0, for: place) })) {
-                ForEach(GroupMode.allCases) { Text($0.name).tag($0) }
+                ForEach(GroupMode.offered) { Text($0.name).tag($0) }
             }
             Toggle("show done", isOn: $model.showDone)
             Divider()
@@ -113,7 +114,6 @@ struct ViewMenu: View {
                 Button("autosort the inbox…") { model.showAutosort = true }
             }
             if case .list(let id) = place {
-                Button("add a section") { model.addSection(to: id) }
                 Button("rename list") { model.renaming = "list:" + id }
             }
             if !model.filter.isEmpty { Button("save this filter as a list") { model.saveFilter() } }
@@ -284,7 +284,9 @@ struct TaskListView: View {
     }
 
     private func handle(_ press: KeyPress) -> KeyPress.Result {
-        guard model.editing == nil else { return .ignored }
+        // Typing in a field inside the list (a + line, a sublist's add line, a title): the keys are
+        // the text's, never the list's (space would open the description; delete, delete tasks).
+        guard model.editing == nil, !(NSApp.keyWindow?.firstResponder is NSText) else { return .ignored }
         let shift = press.modifiers.contains(.shift)
         switch press.key {
         case .upArrow: model.moveSelection(-1, extend: shift); return .handled
@@ -346,11 +348,7 @@ struct GroupHeading: View {
             return model.drop(items, list: list, section: group.sectionId, before: nil)
         } isTargeted: { targeted = $0 }
         .contextMenu {
-            if let list = group.listId, let section = group.sectionId, model.snap.list(list)?.sections.count ?? 0 > 1 {
-                Button("rename section") { renaming = true }
-                Button("delete section (its tasks move up)") { model.store.change("delete section") { $0.deleteSection(section, in: list) } }
-            }
-            if let list = group.listId, list != ListModel.inbox || true { Button("add a section") { model.addSection(to: list) } }
+            if group.listId != nil { Button("new task here") { withAnimation(.snappy(duration: 0.2)) { model.addingTo = group.id } } }
         }
     }
 }

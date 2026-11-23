@@ -111,6 +111,21 @@ In Google Cloud, also turn on the Gmail API for the same project.
 
 `toyl mail pull` (or the `pull_email` tool) checks now. Each message is judged once.
 
+## Canvas
+
+toyl reads your Canvas (canvas.stanford.edu, or another school's) and brings in what's due, to get ready for:
+- 📚 each assignment, quiz and graded discussion becomes a task, due when Canvas says, in the list named like
+  its course ("CS 106B" goes to 💻 cs 106b; else the inbox), with its Canvas page linked in the description
+- ✅ submitted on Canvas: checked off here · its due date moved there: moved here · deleted here: it stays gone
+- every half hour while toyl's open; `toyl canvas pull` (or the `pull_canvas` tool) checks now; `is:canvas` finds them
+
+**Connecting it, once** (settings › canvas):
+- in Canvas: account › settings › new access token, then paste the token
+  - or, if your school doesn't allow tokens: calendar › calendar feed, and paste that address (it can't tell
+    what's been submitted)
+- another school's Canvas: type its address in settings › canvas, or `toyl canvas site canvas.school.edu`
+- the token and feed are kept in toyl-private, readable by your account alone
+
 ## iPhone
 
 toyl on your phone is made for adding tasks and running timers, served by toyl on your Mac (no calendar on it):

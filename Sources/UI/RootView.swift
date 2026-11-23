@@ -374,7 +374,6 @@ struct SidebarRow: View {
                         model.setGroup(group, list: id)
                     }
                 }
-                Button("add a section") { model.addSection(to: id) }
                 Button(list.archived ? "unarchive" : "archive") { model.archive(id, !list.archived) }
                 Divider()
                 Button("delete list (its tasks go to the inbox)") { model.deleteList(id) }

@@ -22,6 +22,8 @@ struct TaskDraft {
     var source: String?
     /// The email it's from, when it's pulled from one.
     var email: MailLink?
+    /// The Canvas assignment it's for.
+    var canvas: CanvasLink?
     var position: Position = .top
 
     init(title: String) { self.title = title }
@@ -244,6 +246,7 @@ struct Doc {
         if let duration = draft.duration, duration > 0 { entry["duration"] = duration }
         if let source = draft.source { entry["source"] = source }
         if let email = draft.email { entry["email"] = email.entry }
+        if let canvas = draft.canvas { entry["canvas"] = canvas.entry }
         self[task: id] = entry
         return id
     }

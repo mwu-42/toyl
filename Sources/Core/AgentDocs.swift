@@ -73,6 +73,14 @@ enum AgentDocs {
         `{id, calendar, follows: true}` when the owner tied it to an existing event by dragging the event onto it: \
         then the task takes the event's day, time and length, and toyl never changes that event.
 
+        ## Canvas
+
+        If the owner connected Canvas (settings › canvas, or `toyl canvas`), toyl brings in what's due every half \
+        hour: each assignment, quiz and graded discussion is a task due when Canvas says, in the list named like its \
+        course, with `source: "canvas"`, `canvas: {id, course, url}` and the Canvas link as its notes. Submitted on \
+        Canvas, it's checked off; moved there, it moves. `pull_canvas` (or `toyl canvas pull`) checks now; \
+        `is:canvas` finds them.
+
         ## Email
 
         If the owner turned it on (settings › email, or `toyl mail`), toyl pulls **important** mail from Gmail and \
@@ -95,14 +103,14 @@ enum AgentDocs {
         ## Filters (`toyl ls <filter>`, `list_tasks` with `query`, saved filters)
 
         Words must all appear. Also: `#tag`, `-#tag`, `in:cs`, `due:today|tomorrow|week|month|overdue|soon|none|any|fri|2026-12-01`, \
-        `before:dec 1`, `after:fri`, `is:open|done|all|pinned|someday|repeating|idea|late|slipped|stale|inbox|email`, \
+        `before:dec 1`, `after:fri`, `is:open|done|all|pinned|someday|repeating|idea|late|slipped|stale|inbox|email|canvas`, \
         `has:notes|subtasks|tags|time|date|aim|timer|event|duration`, `-word`, `"a phrase"`.
 
         ## toyl.json, in brief
 
         `{ version: 3, toyl: 1, lists: [{id, name, color, columns: [{id, name}], group?, notes?, archived?, kind?}], \
         tasks: {id: {id, listId, columnId, title, notes, due, time, target?, subtasks: [{id, title, done}], done, doneAt, \
-        createdAt, updatedAt, order, tags?, pinned?, someday?, repeat?, duration?, spent?, event?, source?, email?}}, groups: [{id, name}], \
+        createdAt, updatedAt, order, tags?, pinned?, someday?, repeat?, duration?, spent?, event?, source?, email?, canvas?}}, groups: [{id, name}], \
         filters: [{id, name, query}], timers: [{id, label, task?, kind, duration, endsAt?, pausedLeft?, startedAt, elapsed, \
         runningSince?}], timerLog: […], settings: {weekStart}, order, layout, collapsed }`. Moments (createdAt, doneAt…) are \
         milliseconds since 1970. Keep any field you don't know about.

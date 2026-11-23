@@ -158,18 +158,6 @@ struct TaskDetail: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
             }
-            if let list, list.sections.count > 1 {
-                DetailRow(label: "section", icon: "rectangle.split.1x2") {
-                    Menu {
-                        ForEach(list.sections) { section in Button(model.display(section.name)) { model.move([task.id], to: list.id, section: section.id) } }
-                    } label: {
-                        MenuLabel(text: list.sections.first { $0.id == task.sectionId }.map { model.display($0.name) } ?? "")
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                }
-            }
         }
     }
 

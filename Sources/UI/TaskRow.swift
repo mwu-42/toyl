@@ -221,13 +221,7 @@ struct TaskMenu: View {
         Button(tasks.allSatisfy(\.someday) ? "back from ideas" : "to ideas (put off)") { model.toggleSomeday(ids) }
         Menu("move to") {
             ForEach(model.snap.sidebarOrder) { list in
-                if list.sections.count > 1 {
-                    Menu(model.display(list.displayName)) {
-                        ForEach(list.sections) { section in Button(model.display(section.name)) { model.move(ids, to: list.id, section: section.id) } }
-                    }
-                } else {
-                    Button(model.display(list.displayName)) { model.move(ids, to: list.id) }
-                }
+                Button(model.display(list.displayName)) { model.move(ids, to: list.id) }
             }
         }
         if !model.snap.tags.isEmpty {
