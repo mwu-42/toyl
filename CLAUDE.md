@@ -121,6 +121,13 @@ It's the v3 format Oyl's to-do store reads, grown:
 - **No mention of tod** anywhere in the app or its docs.
 - **Agents get the window's powers**: anything the app can change, the command line and MCP can.
 
+## Oyl
+
+Oyl (`~/Oyl`, another agent's work) reads toyl's folder. **Whenever a change touches what Oyl sees** (toyl.json's
+format, the folder's files, the `toyl` command's output, timers, ports), add a numbered entry to
+`docs/oyl-changes.md` in the same commit: what changed and what Oyl should do. Keep `docs/oyl-integration.md`
+true too. Never edit `~/Oyl` from here.
+
 ## Privacy
 
 Everything stays on the Mac. Google keys live in the keychain, never in the folder agents read.
