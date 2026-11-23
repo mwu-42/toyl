@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// `toyl __snapshot <place> <file.png> [form]`: draws the window (or the add-to-calendar form) into a
+/// `toyl __snapshot <place> <file.png> [form|settings|completing|select:<id>|calendar|calendar:<day>]`: draws the window (or the add-to-calendar form) into a
 /// picture without showing anything on screen: no Dock icon, no window, nothing brought forward.
 /// For checking how toyl looks while it's being worked on (only with a `TOYL_HOME` list).
 enum Picture {
@@ -21,7 +21,12 @@ enum Picture {
             model.place = Place(key: arguments[0]) ?? .today
             if arguments.count >= 3, arguments[2].hasPrefix("select:") { model.selection = [String(arguments[2].dropFirst(7))] }
             let mode = arguments.count >= 3 ? arguments[2] : ""
-            let size = mode == "form" ? NSSize(width: 540, height: 640) : mode == "settings" ? NSSize(width: 620, height: 1400) : NSSize(width: 1180, height: 760)
+            if mode.hasPrefix("calendar") {
+                model.showCalendar = true
+                if mode.hasPrefix("calendar:") { model.calendarDay = String(mode.dropFirst(9)) }
+            }
+            let size = mode == "form" ? NSSize(width: 540, height: 640) : mode == "settings" ? NSSize(width: 620, height: 1400)
+                : mode.hasPrefix("calendar") ? NSSize(width: 1480, height: 820) : NSSize(width: 1180, height: 760)
             let root: AnyView
             if mode == "settings" {
                 root = AnyView(SettingsView(model: model, calendar: calendar))
@@ -44,7 +49,7 @@ enum Picture {
                                   backing: .buffered, defer: false)
             window.contentView = view
             window.backgroundColor = Theme.nsPaper
-            RunLoop.main.run(until: Date().addingTimeInterval(1.2))
+            RunLoop.main.run(until: Date().addingTimeInterval(mode.hasPrefix("calendar") ? 3 : 1.2))
             view.layoutSubtreeIfNeeded()
             view.display()
             guard let picture = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return 1 }

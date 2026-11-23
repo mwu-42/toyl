@@ -67,7 +67,7 @@ struct TaskDetail: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .top, spacing: 10) {
-                    CheckCircle(done: model.isDone(task), late: task.isLate(at: now) && !model.isDone(task), size: 20)
+                    CheckCircle(done: model.isDone(task), size: 20)
                         .padding(.top, 3)
                         .onTapGesture { model.complete([task.id]) }
                     PlainField(text: $title, placeholder: "title", font: Theme.nsFont(21, bold: true),
@@ -78,6 +78,7 @@ struct TaskDetail: View {
                 when(now: now)
                 Hairline()
                 place
+                if let email = task.email { emailRow(email) }
                 tags
                 Hairline()
                 steps
@@ -125,17 +126,17 @@ struct TaskDetail: View {
     @ViewBuilder private func when(now: Date) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             DetailRow(label: "due", icon: "calendar") {
-                PlainField(text: $due, placeholder: "fri 5pm, tomorrow, nov 30", font: Theme.nsFont(15),
-                           color: task.isLate(at: now) ? NSColor(Theme.late) : Theme.nsInk, onSubmit: commitDue, onEnd: commitDue)
+                PlainField(text: $due, placeholder: "when", font: Theme.nsFont(15),
+                           onSubmit: commitDue, onEnd: commitDue)
                     .frame(height: 19)
             }
             if let day = task.due {
                 Text(Format.longDay(day) + (task.time.map { ", " + Format.time($0) } ?? "") + (task.isLate(at: now) ? " · late" : ""))
-                    .font(Theme.font(12.5)).foregroundStyle(task.isLate(at: now) ? Theme.late : Theme.faint)
+                    .font(Theme.font(12.5)).foregroundStyle(Theme.faint)
                     .padding(.leading, 88)
             }
             DetailRow(label: "aim", icon: "scope") {
-                PlainField(text: $aim, placeholder: "next week, early dec", font: Theme.nsFont(15), onSubmit: commitAim, onEnd: commitAim)
+                PlainField(text: $aim, placeholder: "when", font: Theme.nsFont(15), onSubmit: commitAim, onEnd: commitAim)
                     .frame(height: 19)
             }
             DetailRow(label: "repeats", icon: "arrow.2.squarepath") {
@@ -150,7 +151,7 @@ struct TaskDetail: View {
                 .fixedSize()
             }
             DetailRow(label: "takes", icon: "hourglass") {
-                PlainField(text: $length, placeholder: "30m, 1h30m", font: Theme.nsFont(15), onSubmit: commitLength, onEnd: commitLength)
+                PlainField(text: $length, placeholder: "how long", font: Theme.nsFont(15), onSubmit: commitLength, onEnd: commitLength)
                     .frame(height: 19)
             }
         }
@@ -188,6 +189,19 @@ struct TaskDetail: View {
         }
     }
 
+    /// Where it came from: the email's sender and subject, and a way back to it.
+    private func emailRow(_ email: MailLink) -> some View {
+        DetailRow(label: "email", icon: "envelope") {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(email.from.lowercased()).font(Theme.font(15)).lineLimit(1)
+                Text(email.subject).font(Theme.font(13)).foregroundStyle(Theme.secondary).lineLimit(2)
+                if let link = email.link, let url = URL(string: link) {
+                    Quiet(label: "open it", symbol: "arrow.up.right.square", size: 13) { NSWorkspace.shared.open(url) }
+                }
+            }
+        }
+    }
+
     private var tags: some View {
         DetailRow(label: "tags", icon: "number") {
             VStack(alignment: .leading, spacing: 6) {
@@ -203,7 +217,7 @@ struct TaskDetail: View {
                         .onTapGesture { model.toggleTag(tag, for: [task.id]) }
                     }
                 }
-                PlainField(text: $newTag, placeholder: "add a tag", font: Theme.nsFont(14.5), onSubmit: addTag, onTab: completeTag)
+                PlainField(text: $newTag, placeholder: "tag", font: Theme.nsFont(14.5), onSubmit: addTag, onTab: completeTag)
                     .frame(height: 18)
                 let matches = tagMatches
                 if !matches.isEmpty {
@@ -257,7 +271,7 @@ struct TaskDetail: View {
             ForEach(task.subtasks) { step in StepRow(model: model, task: task, step: step) }
             HStack(spacing: 8) {
                 Image(systemName: "plus").font(.system(size: 10)).foregroundStyle(Theme.faint).frame(width: 14)
-                PlainField(text: $newStep, placeholder: "add a step", font: Theme.nsFont(15), onSubmit: addStep)
+                PlainField(text: $newStep, placeholder: "step", font: Theme.nsFont(15), onSubmit: addStep)
                     .frame(height: 19)
             }
         }
@@ -316,7 +330,7 @@ struct TaskDetail: View {
                 HStack(spacing: 14) {
                     HStack(spacing: 6) {
                         Image(systemName: "keyboard").font(.system(size: 10.5)).foregroundStyle(Theme.faint)
-                        PlainField(text: $timerText, placeholder: "or type: 40m", font: Theme.nsFont(14.5), onSubmit: startTyped)
+                        PlainField(text: $timerText, placeholder: "minutes", font: Theme.nsFont(14.5), onSubmit: startTyped)
                             .frame(width: 110, height: 18)
                     }
                     Quiet(label: "stopwatch", symbol: "stopwatch") { model.timer(task, stopwatch: true) }
@@ -534,7 +548,7 @@ struct DayGlance: View {
                 Text(Format.longDay(today, now: now)).font(Theme.font(21, bold: true)).padding(.top, 34)
                 VStack(alignment: .leading, spacing: 4) {
                     Label("\(dueToday) due today", systemImage: "sun.max")
-                    if late > 0 { Label("\(late) late", systemImage: "exclamationmark.circle").foregroundStyle(Theme.late) }
+                    if late > 0 { Label("\(late) late", systemImage: "clock") }
                     Label("\(inbox) in the inbox", systemImage: "tray")
                     if doneToday > 0 { Label("\(doneToday) done today", systemImage: "checkmark.circle") }
                 }
@@ -555,6 +569,7 @@ struct DayGlance: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Tip(key: "⌘N", words: "new task")
                     Tip(key: "⌃⌥T", words: "add from anywhere")
+                    Tip(key: "⌥⌘C", words: "calendar")
                     Tip(key: "?", words: "an idea")
                     Tip(key: "#cs", words: "list or tag")
                     Tip(key: "by fri", words: "an aim")

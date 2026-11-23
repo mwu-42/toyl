@@ -18,7 +18,8 @@ TOYL_HOME=/tmp/t build/toyl.app/Contents/MacOS/toyl __snapshot today /tmp/today.
   want their desktop pulled around. Check the look with `__snapshot` (needs `TOYL_HOME`: no
   window, no Dock icon) and logic with the command line.
 - Test Google Calendar against a local mock: point `TOYL_GOOGLE_AUTH`, `TOYL_GOOGLE_TOKEN` and
-  `TOYL_GOOGLE_API` at it. Use `toyl google connect --no-browser` and fetch the printed loopback
+  `TOYL_GOOGLE_API` at it (and `TOYL_GMAIL_API`, `TOYL_MS_AUTH`, `TOYL_GRAPH_API` for email).
+  `__snapshot <place> <file> calendar` draws the window with the calendar panel. Use `toyl google connect --no-browser` and fetch the printed loopback
   redirect yourself. With `TOYL_HOME` set, secrets live in that folder, not the keychain.
 - Build with the command line tools' `swiftc` only. No Xcode project, no packages.
 
@@ -36,6 +37,9 @@ TOYL_HOME=/tmp/t build/toyl.app/Contents/MacOS/toyl __snapshot today /tmp/today.
   - `Classifier` is autosort.
   - `Google` handles OAuth (a loopback listener on 127.0.0.1, with PKCE) and the Calendar API
     (labels via `eventLabelVersion=1`). `Secrets` keeps its keys in the keychain.
+  - `Mail` pulls important email: Gmail (Google's sign-in plus `gmail.readonly`) and Outlook (Microsoft Graph,
+    the owner's own Entra app, PKCE, no secret), judged by `MailRules`. `mail.json` holds which inboxes and what's
+    been judged; the sign-ins are in the keychain.
   - `CalendarRules` holds the owner's calendar rules: style, sub-calendars and labels, and the
     planner that asks rather than guesses. `AgentDocs` and `CalendarGuide` write AGENTS.md and
     CALENDAR.md.
@@ -46,6 +50,7 @@ TOYL_HOME=/tmp/t build/toyl.app/Contents/MacOS/toyl __snapshot today /tmp/today.
     latest file. It watches the folder and handles undo.
   - `AppModel`: UI state and actions.
   - `TimerEngine`, whose wall-clock alarm is copied from Oyl.
+  - `MailBridge`: pulls email every ten minutes into the inbox.
   - `CalendarBridge`: Google Calendar in the window. It reads events, keeps linked tasks in step
     both ways, and imports "todo:" events.
   - `Integrations` (agent links, the hot key, Apple's on-device model), `AppDelegate` (menus,
@@ -79,8 +84,16 @@ It's the v3 format Oyl's to-do store reads, grown:
 - **Quiet, like Notes**: plain word buttons and hairline rules. Always light.
 - **Icons and a few words**, never paragraphs: every description in the app is an SF Symbol and a short phrase.
 - **Quick, small animations** (0.2–0.4s): a check pops and fades out, new rows slide in, counts roll.
-- **Places**: inbox, today, anytime, ideas (loose ideas and anything put off: `someday` in the file), timers.
-  No upcoming or logbook in the window (the command line and agents can still ask for them).
+- **Places**: all (`anytime` inside; first, and where the window opens), inbox, today, ideas (loose ideas and
+  anything put off: `someday` in the file), timers. No upcoming or logbook in the window (the command line and
+  agents can still ask for them).
+- **Late is quiet**: a soft red date and nothing else. No badges, red headings or red circles.
+- **Prompts are a word or two**: "new task", "when", "how long". No examples in fields.
+- **Panels resize** by dragging the line between them (`PanelDivider`); widths are kept.
+- **The calendar panel** (`CalendarPanel`) is Google Calendar itself, so it shows everything on the shown
+  calendars (floor meetings too); rundowns elsewhere still leave them out.
+- **Email**: only what needs doing comes in (`MailRules`: packages first, then action words; lists and newsletters
+  only from .edu), flagged `source: "email"` with an `email` link. Rules before the on-device model.
 - **No priorities.** What's pressing is what's due. Pins are the only way to lift something.
 - **Deadline and aim stay apart**: "due" can't slip; "by" can, and says so.
 - **Google Calendar, never Apple's.** Everything written follows CALENDAR.md:

@@ -20,6 +20,8 @@ struct TaskDraft {
     var duration: Int?
     var subtasks: [String] = []
     var source: String?
+    /// The email it's from, when it's pulled from one.
+    var email: MailLink?
     var position: Position = .top
 
     init(title: String) { self.title = title }
@@ -241,6 +243,7 @@ struct Doc {
         if let repeats = draft.repeats { entry["repeat"] = repeats.rawValue }
         if let duration = draft.duration, duration > 0 { entry["duration"] = duration }
         if let source = draft.source { entry["source"] = source }
+        if let email = draft.email { entry["email"] = email.entry }
         self[task: id] = entry
         return id
     }

@@ -215,6 +215,25 @@ enum OnDevice {
             ?? lists.first { !$0.handle.isEmpty && TodQuick.words(answer).joined() == $0.handle }?.id
     }
 
+    /// Whether an email needs doing, and if so the to-do for it (lower case, a few words); nil if not.
+    static func mailTask(_ message: MailMessage) async -> String? {
+        guard isAvailable else { return nil }
+        let instructions = """
+            You read one email and decide if the reader must do something about it soon: pick something up, pay, \
+            submit, sign, register, reply to a person who's waiting, or go somewhere at a set time. Newsletters, \
+            receipts, notices, ads, codes and things just for information don't count. If it needs doing, reply \
+            with a to-do for it: under 8 words, all lower case, starting with a verb. Otherwise reply NONE.
+            """
+        let prompt = "From: \(message.from) <\(message.address)>\nSubject: \(message.subject)\n\(message.snippet.prefix(400))"
+        let session = LanguageModelSession(instructions: instructions)
+        guard let response = try? await session.respond(to: prompt, options: GenerationOptions(temperature: 0.1, maximumResponseTokens: 30)) else { return nil }
+        // Its first line only (it sometimes says more after).
+        let line = response.content.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.first { !$0.isEmpty } ?? ""
+        let answer = line.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'.*-")))
+        guard !answer.isEmpty, !answer.uppercased().hasPrefix("NONE"), answer.count <= 80 else { return nil }
+        return answer.lowercased()
+    }
+
     /// Three to six small next steps for a task, in lower case.
     static func steps(for title: String, notes: String) async -> [String] {
         guard isAvailable else { return [] }

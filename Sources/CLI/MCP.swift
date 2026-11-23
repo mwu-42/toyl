@@ -173,8 +173,8 @@ enum Tools {
             tool("get_overview", "overview", "Today's date, counts (due today, late, inbox…), the user's lists and tags, and running timers. Call this first.",
                  object([:]), readOnly: true, idempotent: true),
             tool("list_tasks", "list tasks",
-                 "Tasks in a view or matching a filter. Views: today (due/aimed today or late, and pinned), inbox, anytime (all open), ideas (loose ideas and anything put off), upcoming (dated later), logbook (done). Filter words: #tag -#tag in:list due:today|tomorrow|week|month|overdue|soon|none|any|fri before:dec-1 after:fri is:done|all|pinned|someday|repeating|late|slipped has:notes|time|timer, plus plain words.",
-                 object(["view": ["type": "string", "enum": ["today", "inbox", "anytime", "ideas", "upcoming", "logbook"]],
+                 "Tasks in a view or matching a filter. Views: today (due/aimed today or late, and pinned), inbox, all (everything open; anytime works too), ideas (loose ideas and anything put off), upcoming (dated later), logbook (done). Filter words: #tag -#tag in:list due:today|tomorrow|week|month|overdue|soon|none|any|fri before:dec-1 after:fri is:done|all|pinned|someday|repeating|late|slipped|email has:notes|time|timer, plus plain words.",
+                 object(["view": ["type": "string", "enum": ["all", "today", "inbox", "ideas", "upcoming", "logbook", "anytime"]],
                          "query": string("filter, e.g. \"#school due:week\""), "list": string("only this list (id or name)"),
                          "tag": string("only this tag"), "include_done": bool("include done tasks"),
                          "limit": ["type": "integer", "description": "at most this many (default 100)"]]),
@@ -219,6 +219,9 @@ enum Tools {
                          "task_id": string("the toyl task it's for (it's then tied to it)"), "tentative": bool("adds \"?\" to the title"),
                          "dry_run": bool("check and describe it without adding")]),
                  idempotent: false),
+            tool("pull_email", "pull important email",
+                 "Checks the user's Gmail and Outlook (whichever they've turned on in toyl) for important mail and adds each as an inbox task flagged as from email (source \"email\", with an email link). Only what needs doing: a package to pick up (like a QTrak notice), something due, something to sign, pay, submit or answer. Newsletters, receipts and codes are left alone. Each message is judged once.",
+                 object(["dry_run": bool("say what would be added, without adding it")]), idempotent: false),
         ]
     }
 
@@ -392,6 +395,14 @@ enum Tools {
                 out["would_add"] = result.outcome.plans.map { CalendarPlanner.describe($0, calendars: result.calendars, rules: rules) }
             }
             return out
+        case "pull_email":
+            let dry = a["dry_run"] as? Bool ?? false
+            let outcome = try Actions.pullMail(apply: !dry)
+            return ["looked_at": outcome.looked, "errors": outcome.errors, (dry ? "would_add" : "added"): outcome.found.map { found -> [String: Any] in
+                var entry: [String: Any] = ["title": found.title, "why": found.why, "from": found.message.from, "subject": found.message.subject]
+                if let due = found.due { entry["due"] = due }
+                return entry
+            }]
         default:
             throw Ops.Failure("no tool called \(name)")
         }

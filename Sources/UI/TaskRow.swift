@@ -20,7 +20,7 @@ struct TaskRow: View {
         let timer = model.timers.timer(for: task.id)
         let done = model.isDone(task)
         HStack(alignment: .top, spacing: 11) {
-            CheckCircle(done: done, late: task.isLate(at: now) && !done)
+            CheckCircle(done: done)
                 .padding(.top, 2)
                 .onTapGesture { model.complete([task.id]) }
                 .help(task.done ? "uncheck" : "check off")
@@ -104,12 +104,14 @@ struct TaskRow: View {
         let today = Day.today(now)
         if let when = Format.due(task, now: now) {
             let late = task.isLate(at: now)
-            let color = late ? Theme.late : (task.due == today ? Theme.ink : Theme.secondary)
-            parts.append(Text(late && !when.contains("late") && when != "yesterday" ? when + ", late" : when).foregroundColor(color))
+            // Late is said quietly: a soft red on the date, nothing more.
+            let color = late ? Theme.late.opacity(0.75) : (task.due == today ? Theme.ink : Theme.secondary)
+            parts.append(Text(when).foregroundColor(color))
         }
         if let target = task.target {
-            parts.append(Text(Format.aim(target, now: now)).foregroundColor(task.hasSlipped(at: now) ? Theme.late.opacity(0.8) : Theme.secondary))
+            parts.append(Text(Format.aim(target, now: now)).foregroundColor(Theme.secondary))
         }
+        if task.isFromEmail { parts.append(Text(Image(systemName: "envelope")) + Text(" email")) }
         if let repeats = task.repeats { parts.append(Text(Image(systemName: "arrow.2.squarepath")) + Text(" " + repeats.phrase)) }
         if let duration = task.duration { parts.append(Text("~" + Format.minutes(duration))) }
         if task.spent >= 60 { parts.append(Text(Image(systemName: "timer")) + Text(" " + Format.spent(task.spent))) }

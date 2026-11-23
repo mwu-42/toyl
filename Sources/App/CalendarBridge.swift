@@ -16,8 +16,14 @@ struct CalEvent: Identifiable, Equatable {
     let location: String?
     /// The task it's for, if toyl put it there.
     let taskId: String?
+    /// Its description, as plain text.
+    var notes = ""
+    /// The event on calendar.google.com.
+    var link: String?
 
     var day: String { Day.string(start) }
+    /// "hinterland?": not settled yet.
+    var tentative: Bool { title.hasSuffix("?") }
 }
 
 struct CalInfo: Identifiable, Equatable, Hashable {
@@ -70,6 +76,10 @@ final class CalendarBridge: ObservableObject {
     @Published private(set) var calendars: [CalInfo] = []
     @Published private(set) var rules: CalendarRules
     @Published var note: String?
+    /// Events outside what's loaded (yesterday to a month ahead), for a day the calendar panel is
+    /// looking at: a fortnight round it, fetched when it's asked for.
+    @Published private(set) var further: [CalEvent] = []
+    private var furtherRange: (from: Date, to: Date)?
 
     /// As Google has them: the calendars, and the shown ones' events (m's too, for keeping it
     /// deduplicated), the day before to a month ahead.
@@ -132,6 +142,8 @@ final class CalendarBridge: ObservableObject {
         said[id] = on
         defaults.set(said, forKey: "calendar.shown")
         objectWillChange.send()
+        further = []
+        furtherRange = nil
         reload()
     }
 
@@ -181,6 +193,8 @@ final class CalendarBridge: ObservableObject {
         raw = []
         events = []
         calendars = []
+        further = []
+        furtherRange = nil
         try? FileManager.default.removeItem(at: Paths.calendar)
     }
 
@@ -204,8 +218,7 @@ final class CalendarBridge: ObservableObject {
                     calendars = google.map { CalInfo(id: $0.id, title: $0.name, color: $0.color, writable: $0.writable, primary: $0.primary,
                                                      shownInGoogle: $0.shownInGoogle, labels: $0.labels) }
                 }
-                let from = Day.calendar.startOfDay(for: Date()).addingTimeInterval(-86400)
-                let to = from.addingTimeInterval(33 * 86400)
+                let (from, to) = Self.loadedRange()
                 let mKey = rules.calendars.first(where: \.dedupe).flatMap { rules.calendar(for: $0, in: google) }?.id
                 let wanted = google.filter { calendar in calendars.first { $0.id == calendar.id }.map(isShown) == true || calendar.id == mKey }
                 var found: [GEvent] = []
@@ -219,6 +232,7 @@ final class CalendarBridge: ObservableObject {
                 lastLoad = Date()
                 if note?.hasPrefix("couldn't reach") == true { note = nil }
                 writeSnapshot()
+                if let range = furtherRange { await fetchFurther(range) }
                 await importTodoEvents()
                 await sync()
             } catch GoogleAuth.Failure.expired {
@@ -237,14 +251,66 @@ final class CalendarBridge: ObservableObject {
                         title: event.title.isEmpty ? "busy" : event.title, start: event.start, end: event.end, allDay: event.allDay,
                         color: label?.color ?? calendar?.color ?? "#8c8c8c", calendarId: event.calendarId,
                         calendarTitle: calendar?.name ?? "", label: label?.name, location: event.location.isEmpty ? nil : event.location,
-                        taskId: event.taskId ?? store.snap.tasks.first { $0.event?.id == event.id }?.id)
+                        taskId: event.taskId ?? store.snap.tasks.first { $0.event?.id == event.id }?.id,
+                        notes: Self.plain(event.description), link: event.link)
+    }
+
+    /// Google keeps descriptions as a little HTML: as plain lines.
+    static func plain(_ html: String) -> String {
+        var text = html.replacingOccurrences(of: #"<br\s*/?>|</p>|</div>|</li>"#, with: "\n", options: [.regularExpression, .caseInsensitive])
+        text = text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        for (entity, char) in [("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&#39;", "'"), ("&nbsp;", " ")] {
+            text = text.replacingOccurrences(of: entity, with: char)
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// What `reload` reads: the day before today to a month ahead.
+    static func loadedRange(now: Date = Date()) -> (Date, Date) {
+        let from = Day.calendar.startOfDay(for: now).addingTimeInterval(-86400)
+        return (from, from.addingTimeInterval(33 * 86400))
+    }
+
+    /// The panel's looking at `day`: if it's outside what's loaded, its fortnight is fetched.
+    func want(_ day: String) {
+        guard connected, let date = Day.date(day) else { return }
+        let (from, to) = Self.loadedRange()
+        if date >= from, date < to.addingTimeInterval(-86400) { return }
+        if let range = furtherRange, date >= range.from.addingTimeInterval(86400), date < range.to.addingTimeInterval(-86400) { return }
+        let range = (from: date.addingTimeInterval(-7 * 86400), to: date.addingTimeInterval(8 * 86400))
+        furtherRange = range
+        Task { @MainActor in await fetchFurther(range) }
+    }
+
+    private func fetchFurther(_ range: (from: Date, to: Date)) async {
+        let shown = google.filter { calendar in calendars.first { $0.id == calendar.id }.map(isShown) == true }
+        var found: [GEvent] = []
+        for calendar in shown {
+            if let some = try? await GoogleCalendarAPI.events(calendar.id, from: range.from, to: range.to) { found += some }
+        }
+        guard furtherRange.map({ $0.from == range.from }) == true else { return }
+        let fresh = found.filter { $0.status != "cancelled" }.map(show).sorted { $0.start < $1.start }
+        if fresh != further { further = fresh }
     }
 
     /// A day's events, for showing (floor meetings and the like left out of rundowns).
     func events(on day: String) -> [CalEvent] {
-        guard showEvents, let start = Day.date(day), let end = Day.calendar.date(byAdding: .day, value: 1, to: start) else { return [] }
-        return events.filter { $0.start < end && $0.end > start && !rules.skips($0.title) }
+        guard showEvents else { return [] }
+        return everything(on: day).filter { !rules.skips($0.title) }
     }
+
+    /// Everything on the shown calendars that day, as Google has it: for the calendar panel,
+    /// which is the calendar itself, not a rundown.
+    func everything(on day: String) -> [CalEvent] {
+        guard let start = Day.date(day), let end = Day.calendar.date(byAdding: .day, value: 1, to: start) else { return [] }
+        let loaded = Set(events.map(\.id))
+        return (events + further.filter { !loaded.contains($0.id) }).filter { $0.start < end && $0.end > start }
+    }
+
+    /// Whether a day has anything on (for the panel's week).
+    func hasEvents(on day: String) -> Bool { !everything(on: day).isEmpty }
+
+    func color(of calendarId: String) -> String { calendars.first { $0.id == calendarId }?.color ?? "#8c8c8c" }
 
     /// The fortnight ahead, for the command line and the MCP server, and your calendars with
     /// their labels.

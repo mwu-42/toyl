@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Carbon
 import SwiftUI
 
@@ -23,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var quickPanel: QuickEntryPanel?
     private var hotKey: HotKey?
     private var waiting: [URL] = []
+    private var roomWatch: AnyCancellable?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         // Always on paper: the cream doesn't turn dark.
@@ -74,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if !window.setFrameUsingName("toyl.main") { window.center() }
         window.setFrameAutosaveName("toyl.main")
         window.makeKeyAndOrderFront(nil)
+        roomWatch = model.$showCalendar.dropFirst().filter { $0 }.sink { [weak self] _ in DispatchQueue.main.async { self?.makeRoom() } }
         // The list has the keys at first (not the filter field, the first a window would pick).
         DispatchQueue.main.async { [weak self] in
             self?.window.makeFirstResponder(nil)
@@ -211,12 +214,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc func toggleDone() { model.showDone.toggle() }
     @objc func toggleSidebar() { model.showSidebar.toggle() }
     @objc func toggleDetails() { model.showInspector.toggle() }
+    @objc func toggleCalendar() { withAnimation(.snappy(duration: 0.25)) { model.showCalendar.toggle() } }
+    @objc func calendarBack() { model.stepDay(-1) }
+    @objc func calendarOn() { model.stepDay(1) }
+    @objc func calendarToday() { model.showDay(Day.today()) }
+
+    /// Opening a panel the window hasn't room for widens the window (within the screen), so the
+    /// list keeps its room.
+    func makeRoom() {
+        guard let window, let screen = window.screen ?? NSScreen.main else { return }
+        var needed: CGFloat = 400
+        if model.showSidebar { needed += model.sidebarWidth + 1 }
+        if model.showInspector, model.place != .timers { needed += model.inspectorWidth + 1 }
+        if model.showCalendar { needed += model.calendarWidth + 1 }
+        var frame = window.frame
+        guard frame.width < needed else { return }
+        let room = screen.visibleFrame
+        frame.size.width = min(needed, room.width)
+        if frame.maxX > room.maxX { frame.origin.x = max(room.maxX - frame.width, room.minX) }
+        window.setFrame(frame, display: true, animate: true)
+    }
     @objc func openMarkdown() { NSWorkspace.shared.open(Paths.markdown) }
     @objc func openAgents() { AgentDocs.write(); NSWorkspace.shared.open(Paths.agents) }
     @objc func openFolder() { model.reveal(Paths.data) }
 
     @objc func go(_ sender: NSMenuItem) {
-        let places: [Place] = [.inbox, .today, .anytime, .ideas, .timers]
+        let places: [Place] = [.anytime, .inbox, .today, .ideas, .timers]
         guard places.indices.contains(sender.tag) else { return }
         showMain()
         model.place = places[sender.tag]
@@ -240,6 +263,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if action == #selector(toggleDone) { item.state = model.showDone ? .on : .off }
         if action == #selector(toggleSidebar) { item.title = model.showSidebar ? "hide sidebar" : "show sidebar" }
         if action == #selector(toggleDetails) { item.title = model.showInspector ? "hide details" : "show details" }
+        if action == #selector(toggleCalendar) { item.title = model.showCalendar ? "hide calendar" : "show calendar" }
+        if [#selector(calendarBack), #selector(calendarOn), #selector(calendarToday)].contains(action) { return model.showCalendar && !typing }
         return true
     }
 }
@@ -308,7 +333,7 @@ enum Menus {
             .separator(),
             item("delete", #selector(AppDelegate.deleteTasks), "\u{8}", target: app),
         ]))
-        let places = ["inbox", "today", "anytime", "ideas", "timers"]
+        let places = ["all", "inbox", "today", "ideas", "timers"]
         main.addItem(submenu("view", places.enumerated().map { index, name in
             let made = item(name, #selector(AppDelegate.go(_:)), "\(index + 1)", target: app)
             made.tag = index
@@ -318,6 +343,12 @@ enum Menus {
             item("show done", #selector(AppDelegate.toggleDone), "d", [.command, .shift], target: app),
             item("hide sidebar", #selector(AppDelegate.toggleSidebar), "s", [.command, .control], target: app),
             item("hide details", #selector(AppDelegate.toggleDetails), "i", [.command, .option], target: app),
+            item("show calendar", #selector(AppDelegate.toggleCalendar), "c", [.command, .option], target: app),
+            submenu("calendar day", [
+                item("day before", #selector(AppDelegate.calendarBack), "[", [.command, .option], target: app),
+                item("day after", #selector(AppDelegate.calendarOn), "]", [.command, .option], target: app),
+                item("today", #selector(AppDelegate.calendarToday), target: app),
+            ]),
             .separator(),
             item("enter full screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
         ]))

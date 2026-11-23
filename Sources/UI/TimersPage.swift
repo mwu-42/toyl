@@ -13,7 +13,7 @@ struct TimersPage: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 10) {
                     Image(systemName: "timer").font(.system(size: 12)).foregroundStyle(Theme.faint)
-                    PlainField(text: $text, placeholder: "“25m essay draft”, “10m tea”, “stopwatch reading”", focus: model.focusQuick,
+                    PlainField(text: $text, placeholder: "new timer", focus: model.focusQuick,
                                onSubmit: start, onEscape: { text = "" })
                         .frame(height: 21)
                 }

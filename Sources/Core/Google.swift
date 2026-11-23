@@ -58,6 +58,8 @@ struct GEvent: Identifiable, Equatable {
     /// The task it's for, if toyl put it there (kept out of sight, in its private properties).
     var taskId: String?
     var recurring: Bool
+    /// The event on calendar.google.com.
+    var link: String?
 
     var day: String { Day.string(start) }
 
@@ -84,6 +86,7 @@ struct GEvent: Identifiable, Equatable {
         updated = GoogleTime.date(e["updated"])
         taskId = ((e["extendedProperties"] as? [String: Any])?["private"] as? [String: Any])?["toylTask"] as? String
         recurring = e["recurringEventId"] != nil
+        link = e["htmlLink"] as? String
     }
 }
 
@@ -150,6 +153,14 @@ enum GoogleTime {
     }
 
     static func string(_ date: Date) -> String { plain.string(from: date) }
+
+    /// "2026-11-20T08:00:00Z", as Microsoft Graph's filters want it.
+    static func utc(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.string(from: date)
+    }
 }
 
 // MARK: - signing in
@@ -167,6 +178,8 @@ enum GoogleAuth {
         var access: String
         var refresh: String?
         var expires: Date
+        /// What Google allowed (space-separated), when it said.
+        var scope: String?
     }
 
     enum Failure: Error, CustomStringConvertible {
@@ -183,8 +196,15 @@ enum GoogleAuth {
         }
     }
 
-    /// Reading every calendar (and its labels), and changing events on them.
-    static let scopes = ["https://www.googleapis.com/auth/calendar.readonly", "https://www.googleapis.com/auth/calendar.events"]
+    /// Reading every calendar (and its labels), and changing events on them; and reading Gmail,
+    /// once pulling email from it is on.
+    static var scopes: [String] {
+        let calendar = ["https://www.googleapis.com/auth/calendar.readonly", "https://www.googleapis.com/auth/calendar.events"]
+        return MailSettings.load().gmail ? calendar + [Gmail.scope] : calendar
+    }
+
+    /// Whether the sign-in covers this (Gmail, say).
+    static func allows(_ scope: String) -> Bool { token?.scope?.split(separator: " ").contains { $0 == scope } ?? false }
     static var authEndpoint: String { env("TOYL_GOOGLE_AUTH") ?? "https://accounts.google.com/o/oauth2/v2/auth" }
     static var tokenEndpoint: String { env("TOYL_GOOGLE_TOKEN") ?? "https://oauth2.googleapis.com/token" }
 
@@ -246,7 +266,8 @@ enum GoogleAuth {
                                                   "redirect_uri": redirect, "grant_type": "authorization_code", "code_verifier": verifier])
         guard let access = json["access_token"] as? String else { throw Failure.said("google sent no access token") }
         let token = Token(access: access, refresh: json["refresh_token"] as? String,
-                          expires: Date().addingTimeInterval((json["expires_in"] as? NSNumber)?.doubleValue ?? 3600))
+                          expires: Date().addingTimeInterval((json["expires_in"] as? NSNumber)?.doubleValue ?? 3600),
+                          scope: json["scope"] as? String ?? scopes.joined(separator: " "))
         guard token.refresh != nil else { throw Failure.said("google sent no refresh token: remove toyl from your google account's third-party access, then connect again") }
         Secrets.encode(token, "google-token")
     }

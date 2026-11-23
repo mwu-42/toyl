@@ -8,18 +8,26 @@ struct RootView: View {
         HStack(spacing: 0) {
             if model.showSidebar {
                 SidebarView(model: model)
-                    .frame(width: 238)
+                    .frame(width: model.sidebarWidth)
                     .background(Theme.sidebar)
-                Rectangle().fill(Theme.rule).frame(width: 1)
+                PanelDivider(width: $model.sidebarWidth, range: 180...380, grows: .right, standard: 238)
             }
             MainPane(model: model)
-                .frame(minWidth: 440, maxWidth: .infinity, maxHeight: .infinity)
+                .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
             if model.showInspector, model.place != .timers {
-                Rectangle().fill(Theme.rule).frame(width: 1)
+                PanelDivider(width: $model.inspectorWidth, range: 260...520, grows: .left, standard: 322)
                 InspectorView(model: model)
-                    .frame(width: 322)
+                    .frame(width: model.inspectorWidth)
                     .frame(maxHeight: .infinity)
                     .background(Theme.paper)
+            }
+            if model.showCalendar {
+                PanelDivider(width: $model.calendarWidth, range: 240...560, grows: .left, standard: 300)
+                CalendarPanel(model: model, width: model.calendarWidth)
+                    .frame(width: model.calendarWidth)
+                    .frame(maxHeight: .infinity)
+                    .background(Theme.paper)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -29,6 +37,44 @@ struct RootView: View {
         .foregroundStyle(Theme.ink)
         .tint(Theme.accent)
         .sheet(item: $model.calendarForm) { form in AddToCalendarView(model: model, form: form) }
+    }
+}
+
+/// The line between two panels: drag it to make the panel wider or narrower; double-click it
+/// for the usual width.
+struct PanelDivider: View {
+    enum Side { case left, right }
+    @Binding var width: CGFloat
+    let range: ClosedRange<CGFloat>
+    /// Which way dragging makes the panel wider: right for one on the left of the line.
+    let grows: Side
+    let standard: CGFloat
+    @Local private var from: CGFloat?
+    @Local private var hovering = false
+
+    var body: some View {
+        Rectangle()
+            .fill(hovering || from != nil ? Theme.selectionFocused : Theme.rule)
+            .frame(width: 1)
+            .overlay {
+                Color.clear
+                    .frame(width: 9)
+                    .contentShape(Rectangle())
+                    .pointerStyle(.columnResize)
+                    .onHover { hovering = $0 }
+                    .gesture(
+                        DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                            .onChanged { drag in
+                                let start = from ?? width
+                                if from == nil { from = width }
+                                let moved = grows == .right ? drag.translation.width : -drag.translation.width
+                                width = min(max(start + moved, range.lowerBound), range.upperBound)
+                            }
+                            .onEnded { _ in from = nil }
+                    )
+                    .onTapGesture(count: 2) { withAnimation(.snappy(duration: 0.2)) { width = standard } }
+            }
+            .zIndex(1)
     }
 }
 
@@ -165,7 +211,7 @@ struct SidebarRow: View {
 
     var body: some View {
         let selected = model.place == place
-        let shown = place == .today ? max(model.count(.today) - model.lateCount, 0) : count ?? model.count(place)
+        let shown = count ?? model.count(place)
         HStack(spacing: 9) {
             icon.frame(width: 18)
             if case .list(let id) = place, model.renaming == "list:" + id {
@@ -179,14 +225,6 @@ struct SidebarRow: View {
                     .truncationMode(.tail)
             }
             Spacer(minLength: 4)
-            if place == .today, model.lateCount > 0 {
-                Text("\(model.lateCount)")
-                    .font(Theme.font(12.5))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(Capsule().fill(Theme.late.opacity(0.85)))
-            }
             if place == .timers, !model.timers.timers.isEmpty {
                 Ring(fraction: model.timers.timers.first.map { $0.kind == .countdown ? $0.fractionLeft(at: model.timers.now) : 1 } ?? 0, size: 12, line: 1.6)
             } else if shown > 0 {

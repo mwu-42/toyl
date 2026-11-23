@@ -30,6 +30,8 @@ enum Paths {
     static var markdownStamp: URL { home.appendingPathComponent(".toyl.md.stamp") }
     static var calendar: URL { home.appendingPathComponent("calendar.json") }
     static var agents: URL { home.appendingPathComponent("AGENTS.md") }
+    /// Pulling email: which inboxes, when last, and which messages have been looked at.
+    static var mail: URL { home.appendingPathComponent("mail.json") }
 
     /// Whether this is the real list, not a `TOYL_HOME` one (only the real one is linked into
     /// agents and found by Oyl).

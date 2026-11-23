@@ -21,7 +21,7 @@ struct AddToCalendarView: View {
         VStack(alignment: .leading, spacing: 13) {
             Text("add to google calendar").font(Theme.font(21, bold: true))
             DetailRow(label: "title", icon: "textformat") {
-                PlainField(text: $form.title, placeholder: "what it's called", font: Theme.nsFont(16)).frame(height: 20)
+                PlainField(text: $form.title, placeholder: "title", font: Theme.nsFont(16)).frame(height: 20)
             }
             let styled = CalendarStyle.title(form.title) + (form.tentative && !CalendarStyle.title(form.title).hasSuffix("?") ? "?" : "")
             if !styled.isEmpty, styled != form.title.trimmingCharacters(in: .whitespaces) {
@@ -62,23 +62,23 @@ struct AddToCalendarView: View {
                 }
             }
             DetailRow(label: "day", icon: "sun.max") {
-                PlainField(text: $form.day, placeholder: "fri, nov 30, tomorrow", font: Theme.nsFont(15)).frame(height: 19)
+                PlainField(text: $form.day, placeholder: "day", font: Theme.nsFont(15)).frame(height: 19)
             }
             Toggle(isOn: $form.allDay) { Text("all day").font(Theme.font(15)) }.toggleStyle(.checkbox).padding(.leading, 88)
             if !form.allDay {
                 DetailRow(label: "from", icon: "clock") {
-                    PlainField(text: $form.start, placeholder: "3pm", font: Theme.nsFont(15)).frame(height: 19)
+                    PlainField(text: $form.start, placeholder: "start", font: Theme.nsFont(15)).frame(height: 19)
                 }
                 DetailRow(label: "to", icon: "clock.badge.checkmark") {
                     HStack(spacing: 10) {
-                        PlainField(text: $form.end, placeholder: "4:30pm", font: Theme.nsFont(15)).frame(width: 90, height: 19)
+                        PlainField(text: $form.end, placeholder: "end", font: Theme.nsFont(15)).frame(width: 90, height: 19)
                         Text("or for").font(Theme.small).foregroundStyle(Theme.faint)
-                        PlainField(text: $form.length, placeholder: "1h", font: Theme.nsFont(15)).frame(height: 19)
+                        PlainField(text: $form.length, placeholder: "length", font: Theme.nsFont(15)).frame(height: 19)
                     }
                 }
             }
             DetailRow(label: "where", icon: "mappin.and.ellipse") {
-                PlainField(text: $form.location, placeholder: "blank, or the place", font: Theme.nsFont(15)).frame(height: 19)
+                PlainField(text: $form.location, placeholder: "place", font: Theme.nsFont(15)).frame(height: 19)
             }
             DetailRow(label: "notes", icon: "text.alignleft") {
                 ZStack(alignment: .topLeading) {

@@ -19,6 +19,8 @@ struct SettingsView: View {
                 }
                 calendarSection
                 Hairline()
+                MailSection(model: model, mail: model.mail, calendar: calendar)
+                Hairline()
                 agentsSection
                 Hairline()
                 autosortSection
@@ -246,6 +248,107 @@ struct SettingsView: View {
     }
 }
 
+/// Pulling important email: Gmail (through the Google sign-in), Outlook (its own), and what
+/// counts.
+struct MailSection: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var mail: MailBridge
+    @ObservedObject var calendar: CalendarBridge
+    @Local private var clientText = ""
+    @Local private var bad = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label { Text("email").font(Theme.font(19, bold: true)) } icon: { Image(systemName: "envelope").foregroundStyle(Theme.accent) }
+            line("shippingbox", "packages, deadlines, things to do", hint: "the rest stays in your inbox") { EmptyView() }
+            gmail
+            outlook
+            if OnDevice.isAvailable {
+                line("apple.intelligence", "ask apple intelligence too", hint: "for mail flagged important") {
+                    Toggle("", isOn: Binding(get: { mail.settings.ask }, set: { mail.setAsk($0) })).toggleStyle(.switch).controlSize(.small).labelsHidden()
+                }
+            }
+            if mail.isOn {
+                line("arrow.clockwise", mail.busy ? "pulling…" : "pulled " + mail.lastPulled) {
+                    Quiet(label: "pull now", tint: Theme.ink) { mail.pull() }
+                }
+            }
+            if let said = mail.said {
+                Label(said, systemImage: "info.circle").font(Theme.small).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder private var gmail: some View {
+        let hint = GoogleAuth.client == nil ? "set up google calendar first"
+            : mail.settings.gmail && !mail.gmailAllowed ? "connect google again to allow it" : "uses your google sign-in"
+        line("envelope", "gmail", hint: hint) {
+            if mail.settings.gmail, !mail.gmailAllowed, GoogleAuth.client != nil {
+                Quiet(label: "connect", tint: Theme.ink) { calendar.connect() }
+            }
+            Toggle("", isOn: Binding(get: { mail.settings.gmail }, set: { mail.setGmail($0) }))
+                .toggleStyle(.switch).controlSize(.small).labelsHidden()
+                .disabled(GoogleAuth.client == nil)
+        }
+    }
+
+    @ViewBuilder private var outlook: some View {
+        switch mail.outlook {
+        case .setUp:
+            line("envelope.badge", "outlook", hint: "needs an app of your own, once") { EmptyView() }
+            VStack(alignment: .leading, spacing: 8) {
+                line("1.circle", "entra › app registrations › new") { open("https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade") }
+                line("2.circle", "mobile and desktop: http://localhost") { EmptyView() }
+                line("3.circle", "api permissions: mail.read") { EmptyView() }
+                line("4.circle", "paste its client id") { EmptyView() }
+                HStack(spacing: 10) {
+                    PlainField(text: $clientText, placeholder: "client id", font: Theme.nsFont(14), onSubmit: save)
+                        .frame(height: 18)
+                        .padding(.horizontal, 8).padding(.vertical, 5)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(Theme.field))
+                    Quiet(label: "save", symbol: "key", tint: Theme.ink, action: save)
+                }
+                if bad { Text("that isn't a client id").font(Theme.small).foregroundStyle(Theme.secondary) }
+            }
+            .padding(.leading, 28)
+        case .signedOut:
+            line("envelope.badge", "outlook", hint: "signs in in your browser") {
+                Quiet(label: "connect", tint: Theme.ink) { mail.connectOutlook() }
+                Quiet(label: "forget app") { Secrets.delete("outlook-client"); mail.disconnectOutlook() }
+            }
+        case .signingIn:
+            line("hourglass", "outlook: finish in your browser") { EmptyView() }
+        case .connected:
+            line("envelope.badge", "outlook", hint: "connected") {
+                Quiet(label: "disconnect") { mail.disconnectOutlook() }
+                Toggle("", isOn: Binding(get: { mail.settings.outlook }, set: { mail.setOutlook($0) }))
+                    .toggleStyle(.switch).controlSize(.small).labelsHidden()
+            }
+        }
+    }
+
+    private func save() {
+        bad = !mail.saveOutlookClient(clientText.trimmingCharacters(in: .whitespacesAndNewlines))
+        if !bad { clientText = ""; mail.connectOutlook() }
+    }
+
+    private func open(_ link: String) -> some View {
+        Quiet(label: "open", symbol: "arrow.up.right") { if let url = URL(string: link) { NSWorkspace.shared.open(url) } }
+    }
+
+    private func line<Trailing: View>(_ icon: String, _ words: String, hint: String? = nil, @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: icon).font(.system(size: 12)).foregroundStyle(Theme.secondary).frame(width: 18)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(words).font(Theme.font(15))
+                if let hint { Text(hint).font(Theme.font(12.5)).foregroundStyle(Theme.faint) }
+            }
+            Spacer(minLength: 8)
+            trailing()
+        }
+    }
+}
+
 import ServiceManagement
 
 /// The panel ⌃⌥T brings up over any app: type a task, Return, and it's in (and you're back
@@ -315,7 +418,7 @@ struct QuickEntryView: View {
                 .foregroundStyle(Theme.faint)
                 Quiet(label: "", symbol: "xmark", size: 12, action: close).help("close (esc)")
             }
-            PlainField(text: $text, placeholder: "essay draft fri 5pm #cs ~2h", font: Theme.nsFont(22), focus: focus,
+            PlainField(text: $text, placeholder: "new task", font: Theme.nsFont(22), focus: focus,
                        onSubmit: { add(keepOpen: NSEvent.modifierFlags.contains(.command)) }, onEscape: close)
                 .frame(height: 28)
             HStack(spacing: 6) {

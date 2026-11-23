@@ -86,6 +86,8 @@ enum Ops {
         if let doneAt = t.doneAt, t.done { out["done_at"] = iso(doneAt) }
         if snap.timedTasks.contains(t.id) { out["timer_running"] = true }
         if t.event != nil { out["on_calendar"] = true }
+        if let email = t.email { out["from_email"] = ["account": email.account, "from": email.from, "subject": email.subject] }
+        else if t.source == "email" { out["from_email"] = true }
         if t.isIdea { out["idea"] = true }
         return out
     }

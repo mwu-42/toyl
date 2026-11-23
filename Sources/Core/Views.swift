@@ -87,7 +87,8 @@ enum Place: Hashable {
     }
 
     /// The sidebar's: then ideas and timers.
-    static let smart: [Place] = [.inbox, .today, .anytime]
+    /// "all" (`anytime` inside) first: it's where the window opens.
+    static let smart: [Place] = [.anytime, .inbox, .today]
 }
 
 enum SortMode: String, CaseIterable, Identifiable {
@@ -543,6 +544,7 @@ struct Query: Equatable {
             case "repeating", "recurring": has = t.repeats != nil
             case "idea": has = t.isIdea
             case "inbox": has = t.listId == ListModel.inbox
+            case "email", "mail": has = t.isFromEmail
             case "late", "overdue": has = t.isLate(at: now)
             case "slipped": has = t.hasSlipped(at: now)
             case "stale": has = t.day == nil && now.timeIntervalSince(t.kept ?? t.createdAt) > 30 * 86400

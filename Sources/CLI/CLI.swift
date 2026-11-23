@@ -6,7 +6,7 @@ enum CLI {
     static let commands: Set<String> = [
         "help", "today", "inbox", "upcoming", "anytime", "all", "someday", "logbook", "ideas", "ls", "list", "search", "show",
         "add", "idea", "done", "undo", "undone", "rm", "delete", "edit", "lists", "tags", "new-list", "agenda", "overview",
-        "timer", "timers", "autosort", "md", "json", "path", "agents", "open", "mcp", "version", "connect", "google", "cal",
+        "timer", "timers", "autosort", "md", "json", "path", "agents", "open", "mcp", "version", "connect", "google", "cal", "mail",
         "--help", "-h", "--version",
     ]
 
@@ -51,6 +51,7 @@ enum CLI {
             case "open": open(args.positional.first)
             case "connect": try connect(args)
             case "google": try google(args)
+            case "mail": try mail(args)
             case "cal":
                 switch try cal(args) {
                 case .needs: return 3
@@ -361,6 +362,98 @@ enum CLI {
         }
     }
 
+    /// Pulling important email: `toyl mail` (how it's set), `toyl mail pull [--dry-run]`,
+    /// `toyl mail gmail on|off`, `toyl mail outlook client <id> [tenant]|connect|disconnect|on|off`,
+    /// `toyl mail ask on|off`.
+    private static func mail(_ args: Args) throws {
+        var words = args.positional
+        let what = words.isEmpty ? "status" : words.removeFirst()
+        var settings = MailSettings.load()
+        func onOff() throws -> Bool {
+            guard let word = words.first?.lowercased(), ["on", "off", "yes", "no", "true", "false"].contains(word) else { throw Ops.Failure("say on or off") }
+            return ["on", "yes", "true"].contains(word)
+        }
+        switch what {
+        case "pull":
+            let outcome = try Actions.pullMail(apply: !args.has("dry-run"))
+            if args.has("json") {
+                print(Ops.text(["looked": outcome.looked, "errors": outcome.errors, "found": outcome.found.map { found -> [String: Any] in
+                    var entry: [String: Any] = ["title": found.title, "why": found.why, "from": found.message.from, "subject": found.message.subject,
+                                                "account": found.message.account]
+                    if let due = found.due { entry["due"] = due }
+                    return entry
+                }]))
+                return
+            }
+            for error in outcome.errors { print("✕ " + error) }
+            if outcome.found.isEmpty {
+                print(outcome.seen.isEmpty ? "nothing new" : "nothing important in \(outcome.seen.count) new message\(outcome.seen.count == 1 ? "" : "s")")
+            }
+            for found in outcome.found {
+                print((args.has("dry-run") ? "would add: " : "added: ") + found.title + (found.due.map { " · due " + Format.day($0) } ?? "")
+                      + "  (✉ " + found.message.from.lowercased() + ")")
+            }
+        case "gmail":
+            settings.gmail = try onOff()
+            if settings.gmail { settings.lastPull = nil }
+            settings.save()
+            if settings.gmail, !GoogleAuth.allows(Gmail.scope) { print("gmail on. now: toyl google connect (to allow reading mail)") } else { print("gmail " + (settings.gmail ? "on" : "off")) }
+        case "ask":
+            settings.ask = try onOff()
+            settings.save()
+            print("apple intelligence " + (settings.ask ? "asked too" : "not asked"))
+        case "outlook":
+            let sub = words.isEmpty ? "status" : words.removeFirst()
+            switch sub {
+            case "client":
+                guard let client = Outlook.client(from: words.joined(separator: " ")) else { throw Ops.Failure("that isn't an app's client id (a guid from entra)") }
+                Outlook.setClient(client)
+                print("outlook app saved (in the keychain). now: toyl mail outlook connect")
+            case "connect":
+                let browser = !args.has("no-browser")
+                try waitFor {
+                    try await Outlook.signIn { url in
+                        if browser {
+                            let process = Process()
+                            process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                            process.arguments = [url.absoluteString]
+                            try? process.run()
+                            print("finish signing in in your browser…")
+                        } else {
+                            print(url.absoluteString)
+                        }
+                        fflush(stdout)
+                    }
+                }
+                settings = MailSettings.load()
+                settings.outlook = true
+                settings.lastPull = nil
+                settings.save()
+                print("connected to outlook")
+            case "disconnect":
+                Outlook.signOut()
+                settings.outlook = false
+                settings.save()
+                print("signed out of outlook (the app's kept)")
+            case "on", "off":
+                settings.outlook = sub == "on"
+                if settings.outlook { settings.lastPull = nil }
+                settings.save()
+                print("outlook " + sub)
+            default:
+                print("outlook: " + (Outlook.client == nil ? "no app yet (toyl mail outlook client <id>)" : Outlook.isConnected ? "connected" : "signed out (toyl mail outlook connect)"))
+            }
+        default:
+            let status: [String: Any] = ["gmail": settings.gmail, "gmailAllowed": GoogleAuth.allows(Gmail.scope), "outlook": settings.outlook,
+                                         "outlookConnected": Outlook.isConnected, "ask": settings.ask,
+                                         "lastPull": settings.lastPull.map { GoogleTime.string($0) } ?? NSNull()]
+            if args.has("json") { return print(Ops.text(status)) }
+            print("gmail: " + (settings.gmail ? (GoogleAuth.allows(Gmail.scope) ? "on" : "on, but google needs connecting again") : "off"))
+            print("outlook: " + (settings.outlook ? (Outlook.isConnected ? "on" : "on, but not connected") : "off"))
+            print("last pulled: " + (settings.lastPull.map { GoogleTime.string($0) } ?? "never"))
+        }
+    }
+
     enum CalResult { case done, needs }
 
     /// Google Calendar: `toyl cal` (your calendars and labels), `toyl cal suggest <task or
@@ -477,7 +570,8 @@ enum CLI {
         toyl: things off your list
 
           toyl                         what's on today
-          toyl today|inbox|anytime|ideas [filter]   (and upcoming, logbook)
+          toyl all|today|inbox|ideas [filter]   (and upcoming, logbook)
+          toyl mail [pull [--dry-run]|gmail on|off|outlook client <id>|outlook connect|ask on|off]
           toyl ls <filter>             e.g. toyl ls "#school due:week", toyl ls essay is:all
           toyl show <id|title>
           toyl add <text>              e.g. toyl add "essay draft fri 5pm #cs ~2h /timer 25m"

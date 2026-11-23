@@ -9,6 +9,7 @@ final class AppModel: ObservableObject {
     let store: Store
     let timers: TimerEngine
     let calendar: CalendarBridge
+    let mail: MailBridge
 
     @Published var place: Place {
         didSet {
@@ -27,6 +28,14 @@ final class AppModel: ObservableObject {
     @Published var filter = ""
     @Published var showInspector: Bool { didSet { defaults.set(showInspector, forKey: "inspector") } }
     @Published var showSidebar: Bool { didSet { defaults.set(showSidebar, forKey: "sidebar") } }
+    /// The calendar panel, on the right.
+    @Published var showCalendar: Bool { didSet { defaults.set(showCalendar, forKey: "calendarPanel") } }
+    /// The day the calendar panel shows; nil for today (whichever day that is).
+    @Published var calendarDay: String?
+    /// How wide the panels are (drag the line between them).
+    @Published var sidebarWidth: CGFloat { didSet { defaults.set(Double(sidebarWidth), forKey: "width.sidebar") } }
+    @Published var inspectorWidth: CGFloat { didSet { defaults.set(Double(inspectorWidth), forKey: "width.details") } }
+    @Published var calendarWidth: CGFloat { didSet { defaults.set(Double(calendarWidth), forKey: "width.calendar") } }
     @Published var showDone = false
     /// A sidebar item being renamed: "list:id", "group:id" or "filter:id".
     @Published var renaming: String?
@@ -57,9 +66,15 @@ final class AppModel: ObservableObject {
         self.store = store
         self.timers = timers
         self.calendar = calendar
-        place = Place(key: defaults.string(forKey: "place") ?? "today") ?? .today
+        mail = MailBridge(store: store, calendar: calendar)
+        // The window opens on all.
+        place = .anytime
         showInspector = defaults.object(forKey: "inspector") as? Bool ?? true
         showSidebar = defaults.object(forKey: "sidebar") as? Bool ?? true
+        showCalendar = defaults.bool(forKey: "calendarPanel")
+        sidebarWidth = CGFloat(defaults.object(forKey: "width.sidebar") as? Double ?? 238)
+        inspectorWidth = CGFloat(defaults.object(forKey: "width.details") as? Double ?? 322)
+        calendarWidth = CGFloat(defaults.object(forKey: "width.calendar") as? Double ?? 300)
         lowercaseAll = defaults.bool(forKey: "lowercaseAll")
         suggestWhileTyping = defaults.object(forKey: "suggest") as? Bool ?? true
         collapsedGroups = Set(defaults.stringArray(forKey: "collapsedGroups") ?? [])
@@ -70,6 +85,7 @@ final class AppModel: ObservableObject {
             store.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() },
             timers.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() },
             calendar.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() },
+            mail.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() },
         ]
         if case .list(let id) = place, store.snap.list(id) == nil { place = .today }
         // Upcoming and logbook aren't places in the window any more.
@@ -114,7 +130,7 @@ final class AppModel: ObservableObject {
         case .inbox: return "inbox"
         case .today: return "today"
         case .upcoming: return "upcoming"
-        case .anytime: return "anytime"
+        case .anytime: return "all"
         case .logbook: return "logbook"
         case .ideas: return "ideas"
         case .timers: return "timers"
@@ -492,6 +508,74 @@ final class AppModel: ObservableObject {
     }
 
     func reveal(_ url: URL) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+
+    // MARK: - the calendar panel
+
+    var shownDay: String { calendarDay ?? Day.today(timers.now) }
+
+    /// Moves the panel a day (or a week) on or back.
+    func stepDay(_ days: Int) {
+        guard let day = Day.adding(days, to: shownDay) else { return }
+        showDay(day)
+    }
+
+    func showDay(_ day: String) {
+        calendarDay = day == Day.today() ? nil : day
+        calendar.want(day)
+    }
+
+    /// Tasks dropped on the panel's hours: due that day at that time (and their events follow, if
+    /// they're on the calendar). Text dropped there becomes a task at that time.
+    func schedule(_ items: [String], day: String, time: String?, keepTime: Bool = false) {
+        for item in items {
+            if item.hasPrefix("toyl:") {
+                let ids = item.dropFirst(5).split(separator: ",").map(String.init).filter { snap.task($0) != nil }
+                guard !ids.isEmpty else { continue }
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    store.update(ids, time == nil ? "reschedule" : "time") { _ in
+                        var p = TaskPatch()
+                        p.due = .some(day)
+                        if !keepTime { p.time = .some(time) }
+                        p.someday = false
+                        return p
+                    }
+                }
+            } else {
+                for line in item.split(whereSeparator: \.isNewline).map({ $0.trimmingCharacters(in: .whitespaces) }) where !line.isEmpty {
+                    var draft = Quick.parse(line, lists: snap.lists, weekStart: snap.weekStart).draft(source: "drop")
+                    draft.due = day
+                    draft.time = time
+                    store.add(draft)
+                }
+            }
+        }
+    }
+
+    /// Clears a task's time (it stays due that day).
+    func clearTime(_ id: String) {
+        store.update([id], "no time") { _ in var p = TaskPatch(); p.time = .some(nil); return p }
+    }
+
+    /// Shows a task: in its list if it isn't where you are, selected, with its details.
+    func reveal(task id: String) {
+        guard let task = snap.task(id) else { return }
+        if !visible.contains(where: { $0.id == id }) {
+            place = task.isIdea ? .ideas : task.listId == ListModel.inbox ? .inbox : .list(task.listId)
+        }
+        selection = [id]
+        anchor = id
+        showInspector = true
+    }
+
+    /// A new event at a time on the panel: the add-to-calendar form, with the day and start filled in.
+    func newEvent(day: String, time: String?) {
+        guard calendar.connected else { calendar.openSettings(); return }
+        var form = EventForm()
+        let said = Format.day(day)
+        form.day = said == "today" || said == "tomorrow" ? said : day
+        if let time { form.start = Format.time(time) }
+        calendarForm = form
+    }
 
     /// Puts a task (or nothing yet) on Google Calendar: the form, filled in the rules' way.
     func addToCalendar(_ task: TaskModel? = nil) {

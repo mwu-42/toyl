@@ -106,6 +106,38 @@ struct EventLink: Equatable, Hashable {
     let calendar: String    // its google calendar's id
 }
 
+/// The email a task was pulled from: which inbox, the message, who sent it, and a link to it.
+struct MailLink: Equatable, Hashable {
+    let account: String     // "gmail" or "outlook"
+    let id: String          // the message's id there
+    let from: String
+    let subject: String
+    let link: String?
+
+    var entry: [String: Any] {
+        var e: [String: Any] = ["account": account, "id": id, "from": from, "subject": subject]
+        if let link { e["link"] = link }
+        return e
+    }
+
+    init(account: String, id: String, from: String, subject: String, link: String?) {
+        self.account = account
+        self.id = id
+        self.from = from
+        self.subject = subject
+        self.link = link
+    }
+
+    init?(entry e: Any?) {
+        guard let e = e as? [String: Any], let id = e["id"] as? String else { return nil }
+        account = e["account"] as? String ?? "email"
+        self.id = id
+        from = e["from"] as? String ?? ""
+        subject = e["subject"] as? String ?? ""
+        link = e["link"] as? String
+    }
+}
+
 struct TaskModel: Identifiable, Equatable, Hashable {
     let id: String
     var listId: String
@@ -130,6 +162,9 @@ struct TaskModel: Identifiable, Equatable, Hashable {
     var spent: Int          // seconds timed on it
     var event: EventLink?
     var source: String?
+    /// The email it came from, if it was pulled from one.
+    var email: MailLink?
+    var isFromEmail: Bool { email != nil || source == "email" }
     /// The task this one came back from, if it's the next of a repeating one.
     var repeatOf: String?
 
@@ -187,6 +222,7 @@ struct TaskModel: Identifiable, Equatable, Hashable {
             event = nil
         }
         source = e["source"] as? String
+        email = MailLink(entry: e["email"])
         repeatOf = e["repeatOf"] as? String
     }
 

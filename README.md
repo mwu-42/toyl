@@ -18,7 +18,13 @@ background with its window hidden, and never jumps in front of what you're doing
 
 ## What's in it
 
-- 🗂 **places**: inbox · today · anytime · ideas · timers, then your lists (in groups), tags, saved filters. ⌘1–5.
+- 🗂 **places**: all · inbox · today · ideas · timers, then your lists (in groups), tags, saved filters. ⌘1–5. it opens on all.
+- 📅 **calendar panel** (⌥⌘C, or the calendar button): a day of google calendar beside your list.
+  - the week on top · all-day events · the hours, with your timed tasks dashed among the events
+  - drop a task on an hour to do it then, or on a day to move it · double-click an hour for a new event
+  - click an event for its details · ⌥⌘[ and ⌥⌘] for the day before and after
+- ↔️ **panels resize**: drag the line between them · double-click it for the usual width.
+- ✉️ **important email**: gmail and outlook, pulled into the inbox and flagged ✉ email. below.
 - 💡 **ideas**: loose ideas (`?` first) and anything put off (`/idea`, or drag it onto ideas). it keeps its list.
 - ⌨️ **quick add** reads what you type: `essay draft fri 5pm #cs ~2h !`
   - `#cs` list or tag · `~list` a list · `?` an idea
@@ -29,6 +35,7 @@ background with its window hidden, and never jumps in front of what you're doing
 - 🪄 **autosort**: files new tasks where your others go (on the mac); ⌥⌘A does the inbox.
 - 🔎 **filters**: `#tag`, `in:cs`, `due:week`, `is:late`… save one as a list.
 - ✨ **small animations**: a check pops then fades, new things slide in, counts roll.
+- 🕰 **late, quietly**: a soft red date, nothing more.
 - 📅 **google calendar**: below.
 - ⌃⌥T **quick entry** from anywhere · esc, click away or ⌃⌥T again to close.
 
@@ -48,7 +55,7 @@ and adds events the way your calendar rules say.
 The client and your sign-in are kept in your keychain, not in toyl's folder.
 
 **What it does:**
-- Shows events beside your tasks: today, upcoming, and the details pane's "still to come". It
+- Shows events beside your tasks: the calendar panel, today, and the details pane's "still to come". It
   shows the calendars Google itself shows, minus the adopted treehacks and stanford feeds; choose
   others in settings.
 - **add to google calendar…** (⇧⌘G, or right-click a task) opens a form filled in from the task
@@ -66,6 +73,27 @@ The client and your sign-in are kept in your keychain, not in toyl's folder.
   or by any agent, and the task follows. Change the task and the event follows.
 - An event called "todo: something" becomes a task. The event is left as it is.
 
+## Email
+
+toyl pulls **important** mail into the inbox every ten minutes while it's open, each task flagged ✉ email with a
+link back to the message (`is:email` finds them):
+- 📦 a package to pick up: QTrak's notices, a mail room, a locker, a front desk
+- 📝 something due, or to sign, pay, submit, rsvp or answer
+- 🙅 newsletters, receipts, shipping news, codes and sales stay in your inbox
+- ✨ with apple intelligence on, mail the inbox flagged from a person is asked about too (on the mac)
+
+**gmail**: settings › email › gmail. It uses your google sign-in, and asks google once more to allow reading mail.
+In Google Cloud, also turn on the Gmail API for the same project.
+
+**outlook** (stanford's mail, or outlook.com): it needs an app of your own, once.
+1. entra.microsoft.com › app registrations › new registration (any name; "accounts in any organizational directory and personal accounts").
+2. Authentication › add a platform › mobile and desktop applications › redirect URI `http://localhost`.
+3. API permissions › Microsoft Graph › delegated › `Mail.Read` (and `User.Read`).
+4. Copy its Application (client) ID into settings › email, then connect. (Or `toyl mail outlook client <id>` then
+   `toyl mail outlook connect`.) A school account may need its IT to allow the app.
+
+`toyl mail pull` (or the `pull_email` tool) checks now. Each message is judged once.
+
 ## Agents: Claude, Muse, Instinct
 
 | way in | for | how |
@@ -81,7 +109,7 @@ The MCP server's tools:
   `complete_task`, `delete_task`.
 - Lists and tags: `list_lists`, `create_list`, `list_tags`.
 - Agenda and timers: `get_agenda`, `start_timer`, `stop_timer`, `list_timers`.
-- Inbox: `autosort_inbox`.
+- Inbox: `autosort_inbox`, `pull_email`.
 - Calendar: `list_calendars`, `suggest_calendar_placement`, and `add_to_calendar`. That last one
   checks your calendar rules and answers with questions when something's missing.
 
@@ -105,6 +133,7 @@ Everything stays on this Mac, in `~/Library/Application Support/toyl/`:
 | `AGENTS.md`, `CALENDAR.md` | how agents read and change it, and your calendar rules |
 | `calendar-rules.json` | the calendar rules toyl applies (calendars, labels, word rules) |
 | `calendar.json` | the next two weeks of your Google Calendar, for the command line and MCP |
+| `mail.json` | which inboxes are on, when they were last read, and which messages have been judged |
 | `toyl.backup.json`, `backups/` | the file from at most ten minutes ago, and a copy a day for a fortnight |
 
 `TOYL_HOME=/some/folder` points the app, the command and the MCP server at another folder, to try

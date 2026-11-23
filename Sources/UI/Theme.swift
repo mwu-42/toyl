@@ -160,8 +160,8 @@ final class InkField: NSTextField {
     }
 }
 
-/// A task's box: a ring, gold and ticked once it's done (as Notes' checklists are), reddish while
-/// it's late.
+/// A task's box: a ring, gold and ticked once it's done (as Notes' checklists are). Late doesn't
+/// change it: late is said quietly, on the date alone.
 struct CheckCircle: View {
     let done: Bool
     var late = false
@@ -169,7 +169,7 @@ struct CheckCircle: View {
 
     var body: some View {
         ZStack {
-            Circle().strokeBorder(late ? Theme.late.opacity(0.75) : Theme.faint, lineWidth: 1.2).opacity(done ? 0 : 1)
+            Circle().strokeBorder(Theme.faint, lineWidth: 1.2).opacity(done ? 0 : 1)
             if done {
                 Circle().fill(Theme.accent).transition(.scale(scale: 0.3).combined(with: .opacity))
                 Image(systemName: "checkmark").font(.system(size: size * 0.5, weight: .bold)).foregroundStyle(.white)

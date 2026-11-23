@@ -54,7 +54,7 @@ enum AgentDocs {
         - **Tags** are plain words (`#reading`). **Repeat** is one of daily, weekdays, weekly, biweekly, monthly, \
         yearly: checking a repeating task off adds the next one. **Duration** is minutes it should take. \
         **Spent** is seconds timed on it.
-        - **Today** shows what's due or aimed for today or before, plus pinned tasks. **Anytime** is everything open. \
+        - **Today** shows what's due or aimed for today or before, plus pinned tasks. **All** (`anytime` in the file and commands) is everything open, and where the window opens. \
         **Ideas** holds loose ideas and anything put off. (Agents can also ask for upcoming, dated later, and logbook, done.)
         - Text is shown in lower case, but keep the case the person typed. Don't capitalize their words.
 
@@ -66,6 +66,14 @@ enum AgentDocs {
         day, the start and end (or all day) and the placement, answering with questions instead. Ask the owner those \
         questions; never guess a day, a time, a length or a calendar. `list_calendars` and `suggest_calendar_placement` \
         help. An event titled "todo: something" becomes a task the next time the app reads the calendar.
+
+        ## Email
+
+        If the owner turned it on (settings › email, or `toyl mail`), toyl pulls **important** mail from Gmail and \
+        Outlook into the inbox, every ten minutes while the app is open: a package to pick up (QTrak's notices and \
+        the like), something due, something to sign, pay, submit or answer. Everything else stays in their inbox. \
+        Such a task has `source: "email"` and `email: {account, id, from, subject, link}`; `is:email` finds them. \
+        `pull_email` (or `toyl mail pull`) checks now; each message is judged once.
 
         ## Quick add (what `toyl add`, `add_task` with `text`, and new toyl.md lines understand)
 
@@ -81,14 +89,14 @@ enum AgentDocs {
         ## Filters (`toyl ls <filter>`, `list_tasks` with `query`, saved filters)
 
         Words must all appear. Also: `#tag`, `-#tag`, `in:cs`, `due:today|tomorrow|week|month|overdue|soon|none|any|fri|2026-12-01`, \
-        `before:dec 1`, `after:fri`, `is:open|done|all|pinned|someday|repeating|idea|late|slipped|stale|inbox`, \
+        `before:dec 1`, `after:fri`, `is:open|done|all|pinned|someday|repeating|idea|late|slipped|stale|inbox|email`, \
         `has:notes|subtasks|tags|time|date|aim|timer|event|duration`, `-word`, `"a phrase"`.
 
         ## toyl.json, in brief
 
         `{ version: 3, toyl: 1, lists: [{id, name, color, columns: [{id, name}], group?, notes?, archived?, kind?}], \
         tasks: {id: {id, listId, columnId, title, notes, due, time, target?, subtasks: [{id, title, done}], done, doneAt, \
-        createdAt, updatedAt, order, tags?, pinned?, someday?, repeat?, duration?, spent?, event?}}, groups: [{id, name}], \
+        createdAt, updatedAt, order, tags?, pinned?, someday?, repeat?, duration?, spent?, event?, source?, email?}}, groups: [{id, name}], \
         filters: [{id, name, query}], timers: [{id, label, task?, kind, duration, endsAt?, pausedLeft?, startedAt, elapsed, \
         runningSince?}], timerLog: […], settings: {weekStart}, order, layout, collapsed }`. Moments (createdAt, doneAt…) are \
         milliseconds since 1970. Keep any field you don't know about.

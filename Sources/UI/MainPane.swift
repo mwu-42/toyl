@@ -13,6 +13,7 @@ struct MainPane: View {
                 QuickAdd(model: model)
                 if let trouble = model.store.trouble { Notice(text: trouble, tint: Theme.late) }
                 if let note = model.calendar.note { Notice(text: note, tint: Theme.secondary) { model.calendar.note = nil } }
+                if let said = model.mail.said { Notice(text: said, tint: Theme.secondary) { model.mail.said = nil } }
                 if let banner = model.banner { Notice(text: banner, tint: Theme.secondary) { model.banner = nil } }
                 if model.showAutosort { AutosortPanel(model: model) }
                 TaskListView(model: model)
@@ -58,8 +59,12 @@ struct Header: View {
                 FilterField(model: model)
                 ViewMenu(model: model)
             }
+            Quiet(label: "", symbol: "calendar", size: 15, tint: model.showCalendar ? Theme.ink : Theme.secondary) {
+                withAnimation(.snappy(duration: 0.25)) { model.showCalendar.toggle() }
+            }
+            .help("calendar (⌥⌘C)")
             Quiet(label: "", symbol: "sidebar.right", size: 15) { model.showInspector.toggle() }
-                .help("show or hide details (⌥⌘I)")
+                .help("details (⌥⌘I)")
         }
         .padding(.top, 30)
         .padding(.leading, model.showSidebar ? 30 : 86)
@@ -200,13 +205,8 @@ struct QuickAdd: View {
 
     private var placeholder: String {
         switch model.place {
-        case .inbox: return "add a task   (essay fri 5pm #cs ~2h)"
-        case .today: return "add for today"
-        case .upcoming: return "add with a day"
-        case .ideas: return "jot an idea"
-        case .tag(let tag): return "add with #\(tag)"
-        case .list(let id): return "add to " + (model.snap.list(id).map { model.display($0.displayName) } ?? "this list")
-        default: return "add a task"
+        case .ideas: return "new idea"
+        default: return "new task"
         }
     }
 
@@ -352,7 +352,7 @@ struct GroupHeading: View {
             } else {
                 Text(group.title.map(model.display) ?? "")
                     .font(Theme.font(15, bold: true))
-                    .foregroundStyle(group.isLate ? Theme.late : Theme.ink)
+                    .foregroundStyle(Theme.ink)
                 if let subtitle = group.subtitle {
                     Text(subtitle).font(Theme.meta).foregroundStyle(Theme.secondary)
                 }

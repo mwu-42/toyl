@@ -358,6 +358,25 @@ extension Actions {
     /// Plans an event the owner's way (CALENDAR.md) and, if nothing's missing and `apply`, adds
     /// it (taking any copy off m) and ties its task to it. What's still needed comes back as
     /// questions instead.
+    /// Pulls important email from the inboxes that are on; adds them (unless `apply` is false).
+    static func pullMail(apply: Bool) throws -> MailPull.Outcome {
+        let snap = try snapshot()
+        let settings = MailSettings.load()
+        let useModel = settings.ask && OnDevice.isAvailable
+        let outcome = try waitFor { () async -> MailPull.Outcome in
+            if useModel { return await MailPull.fetch(snap: snap, ask: { message in await OnDevice.mailTask(message) }) }
+            return await MailPull.fetch(snap: snap)
+        }
+        guard apply else { return outcome }
+        let drafts = outcome.found.map(\.draft)
+        if !drafts.isEmpty {
+            let ids = drafts.map { _ in UID.make() }
+            _ = try save { doc in for (draft, id) in zip(drafts, ids) { _ = doc.addTask(draft, id: id) } }
+        }
+        MailPull.finish(outcome)
+        return outcome
+    }
+
     static func addToCalendar(_ request: EventRequest, apply: Bool = true) throws -> (outcome: EventOutcome, added: [GEvent], calendars: [GCalendar]) {
         var request = request
         let snap = try snapshot()
