@@ -51,6 +51,9 @@ TOYL_HOME=/tmp/t toyl __snapshot today /tmp/today.png   # the window, drawn offs
   - `AppModel`: UI state and actions.
   - `TimerEngine`, whose wall-clock alarm is copied from Oyl.
   - `MailBridge`: pulls email every ten minutes into the inbox.
+  - `PhoneLink`, `PhonePage`, `PhoneServer` (Oyl's, copied): toyl on the iPhone, a home-screen page served on the
+    Wi-Fi or tailnet, for adding tasks and timers. Paired phones only. `toyl __phone <seconds> [picture.png]`
+    (with `TOYL_HOME`) serves it on localhost:47659 with the code 123456 and draws it at iPhone size.
   - `CalendarBridge`: Google Calendar in the window. It reads events, keeps linked tasks in step
     both ways, and imports "todo:" events.
   - `Integrations` (agent links, the hot key, Apple's on-device model), `AppDelegate` (menus,

@@ -10,6 +10,8 @@ final class AppModel: ObservableObject {
     let timers: TimerEngine
     let calendar: CalendarBridge
     let mail: MailBridge
+    /// toyl on your iPhone (see `PhoneLink`).
+    private(set) var phone: PhoneLink!
 
     @Published var place: Place {
         didSet {
@@ -92,9 +94,13 @@ final class AppModel: ObservableObject {
         if case .list(let id) = place, store.snap.list(id) == nil { place = .today }
         // Upcoming and logbook aren't places in the window any more.
         if place == .upcoming || place == .logbook { place = .today }
+        phone = PhoneLink(model: self, testing: Self.phoneTesting)
     }
 
     var snap: Snapshot { store.snap }
+
+    /// `toyl __phone` sets this: a fixed code and port, for trying the phone page out.
+    nonisolated(unsafe) static var phoneTesting: (code: String, port: UInt16)?
 
     // MARK: - what's shown
 

@@ -21,6 +21,8 @@ struct SettingsView: View {
                 Hairline()
                 MailSection(model: model, mail: model.mail, calendar: calendar)
                 Hairline()
+                PhoneSection(phone: model.phone)
+                Hairline()
                 agentsSection
                 Hairline()
                 autosortSection
@@ -345,6 +347,71 @@ struct MailSection: View {
             Image(systemName: icon).font(.system(size: 12)).foregroundStyle(Theme.secondary).frame(width: 18)
             VStack(alignment: .leading, spacing: 1) {
                 Text(words).font(Theme.font(15))
+                if let hint { Text(hint).font(Theme.font(12.5)).foregroundStyle(Theme.faint) }
+            }
+            Spacer(minLength: 8)
+            trailing()
+        }
+    }
+}
+
+/// toyl on your iPhone: on or off, pairing a phone (a code to scan, or six digits), and the phones
+/// that are paired.
+struct PhoneSection: View {
+    @ObservedObject var phone: PhoneLink
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label { Text("iphone").font(Theme.font(19, bold: true)) } icon: { Image(systemName: "iphone").foregroundStyle(Theme.accent) }
+            line("plus.circle", "add tasks and run timers from your phone", hint: phone.overTailscale ? "anywhere, through tailscale" : "on the same wi-fi as this mac") {
+                Toggle("", isOn: Binding(get: { phone.isOn }, set: { phone.setOn($0) })).toggleStyle(.switch).controlSize(.small).labelsHidden()
+            }
+            if phone.isOn {
+                if let pairing = phone.pairing {
+                    if let paired = pairing.paired {
+                        line("checkmark.circle", "\(paired) paired") { EmptyView() }
+                    } else {
+                        HStack(alignment: .top, spacing: 18) {
+                            if let picture = phone.pairingPicture {
+                                Image(decorative: picture, scale: 1)
+                                    .interpolation(.none)
+                                    .resizable()
+                                    .renderingMode(.template)
+                                    .foregroundStyle(Theme.ink)
+                                    .frame(width: 132, height: 132)
+                            }
+                            VStack(alignment: .leading, spacing: 8) {
+                                line("camera", "scan with the camera") { EmptyView() }
+                                line("number", "or type " + spaced(pairing.code)) { EmptyView() }
+                                line("square.and.arrow.up", "then share › add to home screen") { EmptyView() }
+                                Quiet(label: "stop", tint: Theme.secondary) { phone.stopPairing() }
+                            }
+                        }
+                        .padding(.leading, 28)
+                    }
+                } else {
+                    line("qrcode", "pair a phone") { Quiet(label: "pair", tint: Theme.ink) { phone.pair() } }
+                }
+                line("link", phone.address.replacingOccurrences(of: "http://", with: "")) { EmptyView() }
+                if !phone.devices.isEmpty {
+                    line("iphone", phone.devices.count == 1 ? "1 phone paired" : "\(phone.devices.count) phones paired") {
+                        Quiet(label: "forget") { phone.forget() }
+                    }
+                }
+                if case .failed(let why) = phone.status {
+                    Label(why.lowercased(), systemImage: "exclamationmark.circle").font(Theme.small).foregroundStyle(Theme.secondary)
+                }
+            }
+        }
+    }
+
+    private func spaced(_ code: String) -> String { String(code.prefix(3)) + " " + String(code.suffix(3)) }
+
+    private func line<Trailing: View>(_ icon: String, _ words: String, hint: String? = nil, @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: icon).font(.system(size: 12)).foregroundStyle(Theme.secondary).frame(width: 18)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(words).font(Theme.font(15)).textSelection(.enabled)
                 if let hint { Text(hint).font(Theme.font(12.5)).foregroundStyle(Theme.faint) }
             }
             Spacer(minLength: 8)

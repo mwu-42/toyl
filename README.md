@@ -100,6 +100,25 @@ In Google Cloud, also turn on the Gmail API for the same project.
 
 `toyl mail pull` (or the `pull_email` tool) checks now. Each message is judged once.
 
+## iPhone
+
+toyl on your phone is made for adding tasks and running timers, served by toyl on your Mac:
+- ➕ a big "new task" field first, read the way quick add reads it (`fri 5pm`, `#cs`, `/timer 30m`), with your lists to file into
+- ⏱ big buttons for 10m · 30m · 1h · 6h · 24h and a stopwatch, on anything or on a task; what's running, to pause, +5 or stop
+- ☀️ today's tasks, to check off or time
+- ✉️ added while the Mac can't be reached: kept on the phone, sent when it can
+
+**Setting it up, once:**
+- On the Mac: settings › iphone, turn it on, then pair
+- On the phone: scan the code with the camera (or open the address and type the six digits)
+- Then share › add to home screen, and it opens like an app
+
+It works on the same Wi-Fi as the Mac, or from anywhere with Tailscale on both. The Mac has to be awake with
+toyl open. Only paired phones get in (each keeps a long key; toyl keeps its hash), only from your network or
+tailnet; settings › iphone › forget unpairs them all.
+
+(A native iPhone app needs Xcode to build, which this Mac doesn't have. This page is the same list, live.)
+
 ## Agents: Claude, Muse, Instinct
 
 | way in | for | how |
