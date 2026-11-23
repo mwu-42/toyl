@@ -20,7 +20,7 @@ TOYL_HOME=/tmp/t toyl __snapshot today /tmp/today.png   # the window, drawn offs
 - Test Google Calendar against a local mock: point `TOYL_GOOGLE_AUTH`, `TOYL_GOOGLE_TOKEN` and
   `TOYL_GOOGLE_API` at it (and `TOYL_GMAIL_API`, `TOYL_MS_AUTH`, `TOYL_GRAPH_API` for email).
   `__snapshot <place> <file> calendar` draws the window with the calendar panel. Use `toyl google connect --no-browser` and fetch the printed loopback
-  redirect yourself. With `TOYL_HOME` set, secrets live in that folder, not the keychain.
+  redirect yourself. With `TOYL_HOME` set, secrets live in that folder, not toyl-private.
 - Build with the command line tools' `swiftc` only. No Xcode project, no packages.
 
 ## How it's built
@@ -36,10 +36,11 @@ TOYL_HOME=/tmp/t toyl __snapshot today /tmp/today.png   # the window, drawn offs
   - `Views` holds the smart places, the `Query` filters, auto sort and grouping.
   - `Classifier` is autosort.
   - `Google` handles OAuth (a loopback listener on 127.0.0.1, with PKCE) and the Calendar API
-    (labels via `eventLabelVersion=1`). `Secrets` keeps its keys in the keychain.
+    (labels via `eventLabelVersion=1`). `Secrets` keeps its keys in `~/Library/Application Support/toyl-private/`
+    (files only the owner can read). **Never the keychain**: it prompted after every rebuild, and the owner asked for it to stop.
   - `Mail` pulls important email: Gmail (Google's sign-in plus `gmail.readonly`) and Outlook (Microsoft Graph,
     the owner's own Entra app, PKCE, no secret), judged by `MailRules`. `mail.json` holds which inboxes and what's
-    been judged; the sign-ins are in the keychain.
+    been judged; the sign-ins are in toyl-private.
   - `CalendarRules` holds the owner's calendar rules: style, sub-calendars and labels, and the
     planner that asks rather than guesses. `AgentDocs` and `CalendarGuide` write AGENTS.md and
     CALENDAR.md.
@@ -136,4 +137,4 @@ true too. Never edit `~/Oyl` from here.
 
 ## Privacy
 
-Everything stays on the Mac. Google keys live in the keychain, never in the folder agents read.
+Everything stays on the Mac. Google and Microsoft keys live in toyl-private (0600 files), never in the folder agents read.

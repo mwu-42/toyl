@@ -8,7 +8,7 @@ import Foundation
 // an `email` link back to the message.
 
 /// Which inboxes, and what's been looked at already. In toyl's folder (`mail.json`): no secrets
-/// here, the sign-ins are in the keychain.
+/// here: the sign-ins are in `Secrets`' private folder.
 struct MailSettings: Codable, Equatable {
     var gmail = false
     var outlook = false

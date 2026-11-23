@@ -338,7 +338,7 @@ enum CLI {
                 throw Ops.Failure("that doesn't read as a google oauth client: give the downloaded json file, or --id and --secret")
             }
             GoogleAuth.setClient(client)
-            print("client saved (in the keychain). now: toyl google connect")
+            print("client saved (in toyl-private, readable by you alone). now: toyl google connect")
         case "connect":
             let browser = !args.has("no-browser")
             try waitFor {
@@ -428,7 +428,7 @@ enum CLI {
             case "client":
                 guard let client = Outlook.client(from: words.joined(separator: " ")) else { throw Ops.Failure("that isn't an app's client id (a guid from entra)") }
                 Outlook.setClient(client)
-                print("outlook app saved (in the keychain). now: toyl mail outlook connect")
+                print("outlook app saved (in toyl-private, readable by you alone). now: toyl mail outlook connect")
             case "connect":
                 let browser = !args.has("no-browser")
                 try waitFor {

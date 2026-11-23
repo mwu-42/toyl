@@ -132,7 +132,7 @@ struct SettingsView: View {
                 Quiet(label: "save", symbol: "key", tint: Theme.ink) {
                     if calendar.saveClient(clientText) {
                         clientText = ""
-                        said = "saved in your keychain. now connect."
+                        said = "saved, for you alone. now connect."
                     } else {
                         said = "that isn't a google client. paste its json."
                     }

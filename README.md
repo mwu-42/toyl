@@ -66,7 +66,8 @@ and adds events the way your calendar rules say.
 - In toyl: settings › google calendar, paste the JSON, then connect
   - or `toyl google client ~/Downloads/client_secret_….json`, then `toyl google connect`
 
-The client and your sign-in are kept in your keychain, not in toyl's folder.
+The client and your sign-in are kept in `~/Library/Application Support/toyl-private/`, readable by your account
+alone, not in toyl's folder. (Not the keychain: it asked for permission again after every update of toyl.)
 
 **What it does:**
 - Shows events beside your tasks: the calendar panel, today, and the details pane's "still to come". It
