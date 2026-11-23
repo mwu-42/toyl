@@ -93,8 +93,11 @@ It's the v3 format Oyl's to-do store reads, grown:
 - **Panels** (`Panel`, `AppModel.panelOrder`): to-dos, details, calendar by default, dragged into any order by
   the grip at each one's top. The sidebar stays at the left edge. The line beside a panel resizes the one on the
   far side of it from the to-dos, so the calendar's edge always resizes the calendar.
-- **Places** can be hidden from the sidebar (`hiddenPlaces`). Quick entry from anywhere is ⌘⌥X. The calendar has
-  no shortcut of its own; ⌘= and ⌘- (and a pinch) zoom its hours (`calendarZoom`).
+- **Panels show and hide**, the page (to-dos) too (`showTasks`); the owner calls them page, description and
+  calendar. With the page hidden, the calendar (else the description) takes the spare width (`fillingPanel`).
+- Quick entry from anywhere is ⌘⌥X. The calendar has no shortcut of its own; ⌘= and ⌘- (and a pinch) zoom its
+  hours (`calendarZoom`) about the pointer or the pinch.
+- **Swipes rubber-band** (`AppModel.rubber`): free for 80 points, then harder, never past 170.
 - **Calendar**: day, week and month (`CalendarMode`); the today button always shows; events stay clearly
   colored (past ones barely faded). Dragging an event onto a task ties them one way (`event.follows`): the
   task takes the event's day, time, length and list, and toyl never writes to that event.

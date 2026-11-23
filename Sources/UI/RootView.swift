@@ -15,7 +15,7 @@ struct RootView: View {
                 PanelDivider(width: $model.sidebarWidth, range: 180...380, grows: .right, standard: 238)
             }
             ForEach(Array(shown.enumerated()), id: \.element) { index, panel in
-                if index > 0 { divider(between: shown[index - 1], and: panel, tasksRight: (shown.firstIndex(of: .tasks) ?? 0) >= index) }
+                if index > 0 { divider(between: shown[index - 1], and: panel, tasksRight: (model.fillingPanel.flatMap { shown.firstIndex(of: $0) } ?? 0) >= index) }
                 view(of: panel)
                     .overlay(alignment: .top) { PanelGrip(model: model, panel: panel) }
                     .transition(.opacity)
@@ -40,25 +40,39 @@ struct RootView: View {
 
 extension RootView {
     @ViewBuilder func view(of panel: Panel) -> some View {
+        let fills = model.fillingPanel == panel
         switch panel {
         case .tasks:
             MainPane(model: model)
                 .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
         case .details:
-            InspectorView(model: model)
-                .frame(width: model.inspectorWidth)
-                .frame(maxHeight: .infinity)
-                .background(Theme.paper)
+            if fills {
+                InspectorView(model: model)
+                    .frame(minWidth: model.inspectorWidth, maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.paper)
+            } else {
+                InspectorView(model: model)
+                    .frame(width: model.inspectorWidth)
+                    .frame(maxHeight: .infinity)
+                    .background(Theme.paper)
+            }
         case .calendar:
-            CalendarPanel(model: model, width: model.calendarWidth)
-                .frame(width: model.calendarWidth)
-                .frame(maxHeight: .infinity)
-                .background(Theme.paper)
+            if fills {
+                // The page is hidden: the calendar takes the room.
+                GeometryReader { space in CalendarPanel(model: model, width: space.size.width) }
+                    .frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.paper)
+            } else {
+                CalendarPanel(model: model, width: model.calendarWidth)
+                    .frame(width: model.calendarWidth)
+                    .frame(maxHeight: .infinity)
+                    .background(Theme.paper)
+            }
         }
     }
 
-    /// The line between two panels resizes the one on the far side of it from the to-dos (which
-    /// take what's left): so the calendar's edge always resizes the calendar, wherever it is.
+    /// The line between two panels resizes the one on the far side of it from the panel taking
+    /// the spare width (the page, usually): so the calendar's edge always resizes the calendar.
     @ViewBuilder func divider(between left: Panel, and right: Panel, tasksRight: Bool) -> some View {
         let sized = tasksRight ? left : right
         let grows: PanelDivider.Side = tasksRight ? .right : .left
@@ -99,8 +113,14 @@ struct PanelGrip: View {
                 .contextMenu {
                     Button("move \(panel.name) left") { model.nudgePanel(panel, -1) }
                     Button("move \(panel.name) right") { model.nudgePanel(panel, 1) }
+                    Button("hide \(panel.name)") { model.setShown(panel, false) }
+                    let hidden = Panel.allCases.filter { !model.isShown($0) && !($0 == .details && model.place == .timers) }
+                    if !hidden.isEmpty {
+                        Divider()
+                        ForEach(hidden, id: \.self) { other in Button("show \(other.name)") { model.setShown(other, true) } }
+                    }
                     Divider()
-                    Button("to-dos, details, calendar") { withAnimation(.snappy(duration: 0.25)) { model.panelOrder = Panel.standard } }
+                    Button("page, description, calendar") { withAnimation(.snappy(duration: 0.25)) { model.panelOrder = Panel.standard } }
                 }
                 .help("drag to move \(panel.name)")
         }
@@ -163,10 +183,10 @@ struct SidebarView: View {
             Color.clear.frame(height: 46)
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {
-                    ForEach(Place.smart.filter { !model.isHidden($0) }, id: \.self) { place in SidebarRow(model: model, place: place) }
+                    ForEach(Place.smart, id: \.self) { place in SidebarRow(model: model, place: place) }
                     Spacer().frame(height: 10)
-                    if !model.isHidden(.ideas) { SidebarRow(model: model, place: .ideas) }
-                    if !model.isHidden(.timers) { SidebarRow(model: model, place: .timers) }
+                    SidebarRow(model: model, place: .ideas)
+                    SidebarRow(model: model, place: .timers)
                     if !snap.filters.isEmpty {
                         SidebarLabel(text: "filters")
                         ForEach(snap.filters) { filter in SidebarRow(model: model, place: .filter(filter.id)) }
@@ -364,10 +384,6 @@ struct SidebarRow: View {
             Button("delete filter") { model.deleteFilter(id) }
         case .inbox:
             Button("autosort the inbox…") { model.place = .inbox; model.showAutosort = true }
-            Divider()
-            Button("hide from the sidebar") { model.setHidden(place, true) }
-        case .anytime, .today, .ideas, .timers:
-            Button("hide from the sidebar") { model.setHidden(place, true) }
         default:
             EmptyView()
         }

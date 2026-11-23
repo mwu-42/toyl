@@ -216,8 +216,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc func autosort() { model.place = .inbox; model.showAutosort = true; showMain() }
     @objc func toggleDone() { model.showDone.toggle() }
     @objc func toggleSidebar() { model.showSidebar.toggle() }
-    @objc func toggleDetails() { model.showInspector.toggle() }
-    @objc func toggleCalendar() { withAnimation(.snappy(duration: 0.25)) { model.showCalendar.toggle() } }
+    @objc func toggleDetails() { model.setShown(.details, !model.showInspector) }
+    @objc func toggleCalendar() { model.setShown(.calendar, !model.showCalendar) }
     @objc func calendarBack() { model.stepDay(-1) }
     @objc func calendarOn() { model.stepDay(1) }
     @objc func calendarToday() { model.showDay(Day.today()) }
@@ -225,11 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc func calendarZoomIn() { model.zoomCalendar(1) }
     @objc func calendarZoomOut() { model.zoomCalendar(-1) }
     @objc func calendarZoomReset() { model.zoomCalendar(0) }
-    @objc func toggleHidden(_ sender: NSMenuItem) {
-        let places: [Place] = [.anytime, .inbox, .today, .ideas, .timers]
-        guard places.indices.contains(sender.tag) else { return }
-        model.setHidden(places[sender.tag], !model.isHidden(places[sender.tag]))
-    }
+    @objc func togglePage() { model.setShown(.tasks, !model.showTasks) }
     @objc func calendarWeekMode() { model.showCalendar = true; model.calendarMode = .week }
     @objc func calendarMonthMode() { model.showCalendar = true; model.calendarMode = .month }
 
@@ -237,7 +233,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// list keeps its room.
     func makeRoom() {
         guard let window, let screen = window.screen ?? NSScreen.main else { return }
-        var needed: CGFloat = 400
+        var needed: CGFloat = model.showTasks ? 400 : 0
         if model.showSidebar { needed += model.sidebarWidth + 1 }
         if model.showInspector, model.place != .timers { needed += model.inspectorWidth + 1 }
         if model.showCalendar { needed += model.calendarWidth + 1 }
@@ -276,14 +272,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if action == #selector(selectAll(_:)) { return !typing }
         if action == #selector(toggleDone) { item.state = model.showDone ? .on : .off }
         if action == #selector(toggleSidebar) { item.title = model.showSidebar ? "hide sidebar" : "show sidebar" }
-        if action == #selector(toggleDetails) { item.title = model.showInspector ? "hide details" : "show details" }
-        if action == #selector(toggleCalendar) { item.title = model.showCalendar ? "hide calendar" : "show calendar" }
+        if action == #selector(toggleDetails) { item.state = model.showInspector ? .on : .off }
+        if action == #selector(toggleCalendar) { item.state = model.showCalendar ? .on : .off }
         if [#selector(calendarBack), #selector(calendarOn), #selector(calendarToday)].contains(action) { return model.showCalendar && !typing }
         if action == #selector(calendarDayMode) { item.state = model.calendarMode == .day ? .on : .off }
-        if action == #selector(toggleHidden(_:)) {
-            let places: [Place] = [.anytime, .inbox, .today, .ideas, .timers]
-            if places.indices.contains(item.tag) { item.state = model.isHidden(places[item.tag]) ? .off : .on }
-        }
+        if action == #selector(togglePage) { item.state = model.showTasks ? .on : .off }
         if [#selector(calendarZoomIn), #selector(calendarZoomOut), #selector(calendarZoomReset)].contains(action) { return model.showCalendar && !typing }
         if action == #selector(calendarWeekMode) { item.state = model.calendarMode == .week ? .on : .off }
         if action == #selector(calendarMonthMode) { item.state = model.calendarMode == .month ? .on : .off }
@@ -364,13 +357,10 @@ enum Menus {
             .separator(),
             item("show done", #selector(AppDelegate.toggleDone), "d", [.command, .shift], target: app),
             item("hide sidebar", #selector(AppDelegate.toggleSidebar), "s", [.command, .control], target: app),
-            item("hide details", #selector(AppDelegate.toggleDetails), "i", [.command, .option], target: app),
-            item("show calendar", #selector(AppDelegate.toggleCalendar), target: app),
-            submenu("in the sidebar", ["all", "inbox", "today", "ideas", "timers"].enumerated().map { index, name in
-                let made = item(name, #selector(AppDelegate.toggleHidden(_:)), target: app)
-                made.tag = index
-                return made
-            }),
+            .separator(),
+            item("page", #selector(AppDelegate.togglePage), target: app),
+            item("description", #selector(AppDelegate.toggleDetails), "i", [.command, .option], target: app),
+            item("calendar", #selector(AppDelegate.toggleCalendar), target: app),
             submenu("calendar", [
                 item("earlier", #selector(AppDelegate.calendarBack), "[", [.command, .option], target: app),
                 item("later", #selector(AppDelegate.calendarOn), "]", [.command, .option], target: app),

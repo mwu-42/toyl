@@ -57,11 +57,13 @@ struct Header: View {
                 ViewMenu(model: model)
             }
             Quiet(label: "", symbol: "calendar", size: 15, tint: model.showCalendar ? Theme.ink : Theme.secondary) {
-                withAnimation(.snappy(duration: 0.25)) { model.showCalendar.toggle() }
+                model.setShown(.calendar, !model.showCalendar)
             }
             .help("calendar")
-            Quiet(label: "", symbol: "sidebar.right", size: 15) { model.showInspector.toggle() }
-                .help("details (⌥⌘I)")
+            Quiet(label: "", symbol: "sidebar.right", size: 15, tint: model.showInspector ? Theme.ink : Theme.secondary) {
+                model.setShown(.details, !model.showInspector)
+            }
+            .help("description (⌥⌘I)")
         }
         .padding(.top, 30)
         .padding(.leading, model.showSidebar || model.panelOrder.filter(model.isShown).first != .tasks ? 30 : 86)

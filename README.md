@@ -19,19 +19,19 @@ background with its window hidden, and never jumps in front of what you're doing
 ## What's in it
 
 - 🗂 **places**: all · inbox · today · ideas · timers, then your lists (in groups), tags, saved filters. ⌘1–5. it opens on all.
-  - hide one you don't use: right-click it › hide from the sidebar · view › in the sidebar brings it back
 - 📅 **calendar panel** (the calendar button): google calendar beside your list, as a **day, week or month**.
   - day: the week on top · all-day events · the hours, with your timed tasks dashed among the events
   - week: seven days of hours side by side; "n more" over a day opens the all-day row · month: each day's events and tasks; click a day to open it
-  - **zoom** the hours: pinch on the trackpad, or ⌘= and ⌘-
+  - **zoom** the hours: pinch on the trackpad, or ⌘= and ⌘-; it zooms about where you're pointing
   - drop a task on an hour to do it then, or on a day to move it · double-click an hour for a new event
   - **drag an event onto a task** to tie them: the task takes the event's day, time and list, and follows it if it moves. the event itself is never changed.
   - click an event for its details · ⌥⌘[ and ⌥⌘] for earlier and later · today is always one click
-- ↔️ **panels**: to-dos, details, calendar, in that order at first.
+- ↔️ **panels**: the page (your to-dos), the description (a task's details) and the calendar, in that order at first.
+  - show or hide any of them: view › page, description, calendar, or right-click a panel's grip. with the page hidden, the calendar (or the description) fills the window
   - drag the calendar's edge to make it wider or narrower, wherever it sits
   - drag a panel's grip (≡, at its top) onto another to swap them · right-click the grip to move it left or right
   - drag the line between panels to resize them · double-click it for the usual width
-- 👆 **swipe a task** (two fingers on the trackpad, as in Mail; or a finger on the phone)
+- 👆 **swipe a task** (two fingers on the trackpad, as in Mail; or a finger on the phone). it pulls freely, then harder and harder, like a rubber band
   - right: into its list's **in progress** (again to take it back out)
   - left: delete (⌘z puts it back)
 - ✉️ **important email**: gmail and outlook, pulled into the inbox and flagged ✉ email. below.

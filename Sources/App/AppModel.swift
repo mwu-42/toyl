@@ -8,11 +8,12 @@ enum Panel: String, CaseIterable {
 
     static let standard: [Panel] = [.tasks, .details, .calendar]
 
+    /// What the owner calls it.
     var name: String {
         switch self {
         case .calendar: return "calendar"
-        case .tasks: return "to-dos"
-        case .details: return "details"
+        case .tasks: return "page"
+        case .details: return "description"
         }
     }
 }
@@ -64,8 +65,8 @@ final class AppModel: ObservableObject {
     @Published var panelOrder: [Panel] { didSet { defaults.set(panelOrder.map(\.rawValue), forKey: "panels.2") } }
     /// How tall the calendar's hours are (pinch, or ⌘= and ⌘-): 1 is 44 points an hour.
     @Published var calendarZoom: CGFloat { didSet { defaults.set(Double(calendarZoom), forKey: "calendarZoom") } }
-    /// Places taken out of the sidebar (by their keys).
-    @Published var hiddenPlaces: Set<String> { didSet { defaults.set(Array(hiddenPlaces), forKey: "hiddenPlaces") } }
+    /// The page (the to-dos) showing: it can be hidden, leaving the calendar or the description to fill the window.
+    @Published var showTasks: Bool { didSet { defaults.set(showTasks, forKey: "pagePanel") } }
     @Published var showDone = false
     /// A sidebar item being renamed: "list:id", "group:id" or "filter:id".
     @Published var renaming: String?
@@ -104,6 +105,15 @@ final class AppModel: ObservableObject {
     /// How far a swipe goes before it does something.
     static let swipeReach: CGFloat = 70
 
+    /// A rubber band, as iOS pulls: free for the first `free` points, then harder and harder,
+    /// never past `free + give`.
+    static func rubber(_ x: CGFloat, free: CGFloat = 80, give: CGFloat = 90) -> CGFloat {
+        let size = abs(x)
+        guard size > free else { return x }
+        let pulled = free + (1 - 1 / ((size - free) * 0.55 / give + 1)) * give
+        return x < 0 ? -pulled : pulled
+    }
+
     private let defaults = UserDefaults.standard
     private var forwarding: [AnyCancellable] = []
     private var learned: (stamp: Int, classifier: Classifier)?
@@ -126,7 +136,7 @@ final class AppModel: ObservableObject {
         calendarMode = CalendarMode(rawValue: defaults.string(forKey: "calendarMode") ?? "") ?? .day
         let saved = (defaults.stringArray(forKey: "panels.2") ?? []).compactMap(Panel.init(rawValue:))
         calendarZoom = CGFloat(defaults.object(forKey: "calendarZoom") as? Double ?? 1)
-        hiddenPlaces = Set(defaults.stringArray(forKey: "hiddenPlaces") ?? [])
+        showTasks = defaults.object(forKey: "pagePanel") as? Bool ?? true
         panelOrder = Set(saved) == Set(Panel.allCases) && saved.count == Panel.allCases.count ? saved : Panel.standard
         lowercaseAll = defaults.bool(forKey: "lowercaseAll")
         suggestWhileTyping = defaults.object(forKey: "suggest") as? Bool ?? true
@@ -626,36 +636,37 @@ final class AppModel: ObservableObject {
     /// Zooms the calendar's hours in (+1) or out (-1), or back to the usual (0).
     func zoomCalendar(_ way: Int) {
         let steps: [CGFloat] = [0.5, 0.65, 0.8, 1, 1.25, 1.5, 1.8, 2.2, 2.6]
-        withAnimation(.snappy(duration: 0.2)) {
-            if way == 0 { calendarZoom = 1; return }
-            let next = way > 0 ? steps.first { $0 > calendarZoom + 0.01 } : steps.last { $0 < calendarZoom - 0.01 }
-            calendarZoom = next ?? calendarZoom
-        }
+        if way == 0 { calendarZoom = 1; return }
+        let next = way > 0 ? steps.first { $0 > calendarZoom + 0.01 } : steps.last { $0 < calendarZoom - 0.01 }
+        calendarZoom = next ?? calendarZoom
     }
 
     static let zoomRange: ClosedRange<CGFloat> = 0.5...2.6
 
-    // MARK: - places in the sidebar
-
-    func isHidden(_ place: Place) -> Bool { hiddenPlaces.contains(place.key) }
-
-    /// Takes a place out of the sidebar (or puts it back). Hiding the one that's showing goes to
-    /// the first left.
-    func setHidden(_ place: Place, _ hidden: Bool) {
-        withAnimation(.snappy(duration: 0.2)) {
-            if hidden { hiddenPlaces.insert(place.key) } else { hiddenPlaces.remove(place.key) }
-        }
-        if hidden, self.place == place { self.place = (Place.smart + [.ideas, .timers]).first { !isHidden($0) } ?? .anytime }
-    }
-
     /// Whether a panel's showing now.
     func isShown(_ panel: Panel) -> Bool {
         switch panel {
-        case .tasks: return true
+        case .tasks: return showTasks
         case .calendar: return showCalendar
         case .details: return showInspector && place != .timers
         }
     }
+
+    /// Shows or hides a panel (the page, the description, the calendar). The last one showing
+    /// can't go: hiding it brings the page back.
+    func setShown(_ panel: Panel, _ on: Bool) {
+        withAnimation(.snappy(duration: 0.25)) {
+            switch panel {
+            case .tasks: showTasks = on
+            case .calendar: showCalendar = on
+            case .details: showInspector = on
+            }
+            if !Panel.allCases.contains(where: isShown) { showTasks = true }
+        }
+    }
+
+    /// The panel that takes the window's spare width: the page, else the calendar, else the description.
+    var fillingPanel: Panel? { [Panel.tasks, .calendar, .details].first(where: isShown) }
 
     /// Tasks dropped on the panel's hours: due that day at that time (and their events follow, if
     /// they're on the calendar). Text dropped there becomes a task at that time.
@@ -733,7 +744,7 @@ final class AppModel: ObservableObject {
             }
             swipeTrack = track
             guard track.sideways == true else { return false }
-            swipe = Swipe(id: track.id, offset: min(max(track.dx, -150), 150))
+            swipe = Swipe(id: track.id, offset: Self.rubber(track.dx))
             return true
         }
         if event.phase.contains(.ended) || event.phase.contains(.cancelled) {

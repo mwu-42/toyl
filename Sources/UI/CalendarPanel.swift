@@ -179,7 +179,10 @@ private struct CalendarsList: View {
                 Quiet(label: "refresh", symbol: "arrow.clockwise") { calendar.reload() }.padding(.horizontal, 6)
             }
             Quiet(label: "calendar settings", symbol: "gearshape") { open = false; calendar.openSettings() }.padding(.horizontal, 6)
-            Quiet(label: "hide calendar", symbol: "eye.slash") { open = false; model.showCalendar = false }.padding(.horizontal, 6)
+            if !model.showTasks {
+                Quiet(label: "show page", symbol: "list.bullet") { open = false; model.setShown(.tasks, true) }.padding(.horizontal, 6)
+            }
+            Quiet(label: "hide calendar", symbol: "eye.slash") { open = false; model.setShown(.calendar, false) }.padding(.horizontal, 6)
         }
         .padding(12)
         .frame(width: 250, alignment: .leading)
@@ -344,8 +347,16 @@ private struct HoursView: View {
     let days: [String]
     let width: CGFloat
     @Local private var marker: DropSpot?
-    /// The zoom a pinch started from.
+    /// The zoom a pinch started from, where it started (down the visible hours), and the hour
+    /// (in hours from midnight) that was there: zooming keeps that hour under the fingers.
     @Local private var pinchFrom: CGFloat?
+    @Local private var pinchAt: CGFloat?
+    @Local private var pinchHour: CGFloat?
+    /// Where the hours are scrolled to, how tall the visible part is, and where the pointer is in it.
+    @Local private var scrolled = ScrollPosition(edge: .top)
+    @Local private var offset: CGFloat = 0
+    @Local private var visible: CGFloat = 0
+    @Local private var pointer: CGFloat?
 
     /// An hour's height at no zoom.
     static let baseHour: CGFloat = 44
@@ -397,19 +408,38 @@ private struct HoursView: View {
                 }
                 .frame(width: width, height: 24 * hour, alignment: .topLeading)
                 .onDrop(of: [.plainText], delegate: HourDrop(model: model, days: days, column: column, hour: hour, marker: $marker))
-                .padding(.vertical, 10)
+                .padding(.vertical, Self.pad)
             }
             .scrollIndicators(.never)
-            // Pinch to zoom the hours (⌘= and ⌘- too).
+            .scrollPosition($scrolled)
+            .onScrollGeometryChange(for: [CGFloat].self) { [$0.contentOffset.y, $0.containerSize.height] } action: { _, now in
+                offset = now[0]
+                visible = now[1]
+            }
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let point): pointer = point.y
+                case .ended: pointer = nil
+                }
+            }
+            // Pinch to zoom the hours (⌘= and ⌘- too), about where the fingers are.
             .simultaneousGesture(
                 MagnifyGesture()
                     .onChanged { value in
-                        let from = pinchFrom ?? model.calendarZoom
-                        if pinchFrom == nil { pinchFrom = from }
-                        model.calendarZoom = min(max(from * value.magnification, AppModel.zoomRange.lowerBound), AppModel.zoomRange.upperBound)
+                        if pinchFrom == nil {
+                            pinchFrom = model.calendarZoom
+                            pinchAt = value.startLocation.y
+                            pinchHour = (offset + value.startLocation.y - Self.pad) / hour
+                        }
+                        model.calendarZoom = min(max((pinchFrom ?? 1) * value.magnification, AppModel.zoomRange.lowerBound), AppModel.zoomRange.upperBound)
                     }
-                    .onEnded { _ in pinchFrom = nil }
+                    .onEnded { _ in
+                        pinchFrom = nil
+                        pinchAt = nil
+                        pinchHour = nil
+                    }
             )
+            .onChange(of: model.calendarZoom) { old, new in keepInPlace(from: old, to: new) }
             .onAppear { scroll(proxy, today: today, now: now) }
             .onChange(of: days) { _, _ in scroll(proxy, today: today, now: now) }
         }
@@ -420,6 +450,17 @@ private struct HoursView: View {
         case .event(let event): EventBlock(model: model, event: event, height: height, past: event.end < now, compact: compact)
         case .task(let task): TaskBlock(model: model, task: task, height: height, compact: compact)
         }
+    }
+
+    /// The space above and below the hours.
+    static let pad: CGFloat = 10
+
+    /// After a zoom: the hour that was under the fingers (or the pointer, or the middle) stays there.
+    private func keepInPlace(from old: CGFloat, to new: CGFloat) {
+        let at = pinchAt ?? pointer ?? visible / 2
+        let hourThen = pinchHour ?? (offset + at - Self.pad) / (Self.baseHour * old)
+        let top = hourThen * Self.baseHour * new + Self.pad - at
+        scrolled.scrollTo(y: min(max(top, 0), max(24 * Self.baseHour * new + 2 * Self.pad - visible, 0)))
     }
 
     /// A day's timed events and tasks, laid out (a task on the calendar shows as its event).

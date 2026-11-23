@@ -447,6 +447,14 @@ enum PhonePage {
       return row;
     }
 
+    // A rubber band: free at first, then harder and harder to pull, never past 170 points.
+    function rubber(x) {
+      const size = Math.abs(x), free = 80, give = 90;
+      if (size <= free) return x;
+      const pulled = free + (1 - 1 / ((size - free) * 0.55 / give + 1)) * give;
+      return x < 0 ? -pulled : pulled;
+    }
+
     // Swiping, as Apple's lists do: right for in progress, left to delete.
     function swipeable(row, front, task) {
       let x0 = 0, y0 = 0, dx = 0, sideways = null;
@@ -464,7 +472,7 @@ enum PhonePage {
         }
         if (!sideways) return;
         event.preventDefault();
-        dx = Math.max(Math.min(mx, 170), -170);
+        dx = rubber(mx);
         front.style.transform = `translateX(${dx}px)`;
         row.classList.toggle("right", dx > 0);
         row.classList.toggle("left", dx < 0);
