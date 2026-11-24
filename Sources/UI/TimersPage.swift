@@ -7,7 +7,7 @@ struct TimersPage: View {
     @Local private var text = ""
 
     var body: some View {
-        let now = model.timers.now
+        let now = model.clock
         let snap = model.snap
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -29,7 +29,11 @@ struct TimersPage: View {
                     Text("nothing going").font(Theme.font(17)).foregroundStyle(Theme.faint).padding(.top, 6)
                 } else {
                     ForEach(model.timers.timers) { timer in
-                        BigTimer(model: model, timer: timer, now: now).transition(.scale(scale: 0.95).combined(with: .opacity))
+                        // Each ticks on its own, each second while it's going.
+                        TimelineView(.periodic(from: .now, by: timer.isRunning ? 1 : 60)) { context in
+                            BigTimer(model: model, timer: timer, now: context.date)
+                        }
+                        .transition(.scale(scale: 0.95).combined(with: .opacity))
                     }
                 }
                 let today = Day.today(now)
@@ -117,43 +121,6 @@ struct BigTimer: View {
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 12).fill(Theme.sidebar))
-    }
-}
-
-/// What's going, along the foot of the window wherever you are.
-struct TimerBar: View {
-    @ObservedObject var model: AppModel
-
-    var body: some View {
-        let now = model.timers.now
-        VStack(spacing: 0) {
-            Hairline()
-            HStack(spacing: 22) {
-                ForEach(model.timers.timers.prefix(3)) { timer in
-                    HStack(spacing: 8) {
-                        if timer.kind == .countdown {
-                            Ring(fraction: timer.fractionLeft(at: now), size: 14, line: 2, color: timer.isRunning ? Theme.accent : Theme.faint)
-                            Text(Format.clock(timer.remaining(at: now))).font(Theme.font(15).monospacedDigit())
-                        } else {
-                            Image(systemName: "stopwatch").font(.system(size: 11)).foregroundStyle(Theme.secondary)
-                            Text(Format.clock(timer.worked(at: now), roundingUp: false)).font(Theme.font(15).monospacedDigit())
-                        }
-                        Text(model.display(timer.label)).font(Theme.font(14.5)).foregroundStyle(Theme.secondary).lineLimit(1)
-                        Quiet(label: "", symbol: timer.isRunning ? "pause.fill" : "play.fill", size: 11) { model.timers.togglePause(timer.id) }
-                        Quiet(label: "", symbol: "stop.fill", size: 11) { model.timers.stop(timer.id) }
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        if let task = timer.taskId, model.snap.task(task) != nil { model.selection = [task]; model.anchor = task }
-                    }
-                }
-                Spacer()
-                Quiet(label: "timers") { model.place = .timers }
-            }
-            .padding(.horizontal, 26)
-            .padding(.vertical, 10)
-            .background(Theme.sidebar)
-        }
     }
 }
 

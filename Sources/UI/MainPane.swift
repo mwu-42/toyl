@@ -79,8 +79,8 @@ extension Header {
         }
     }
 
-    func renameTitle(to name: String) {
-        switch model.place {
+    func renameTitle(_ place: Place, to name: String) {
+        switch place {
         case .list(let id): model.renameList(id, to: name)
         case .filter(let id): model.renameFilter(id, to: name)
         default: break
@@ -91,18 +91,24 @@ extension Header {
 struct Header: View {
     @ObservedObject var model: AppModel
     @Local private var renaming = false
+    /// The place whose name is being changed (kept, so leaving it saves to it, not the next).
+    @Local private var renamingPlace: Place?
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 14) {
             // A list's or a filter's name: double-click to change it.
-            if renaming, let name = titleName {
-                RenameField(name: name, font: Theme.nsFont(30, bold: true)) { renameTitle(to: $0) } done: { renaming = false }
+            if renaming, let name = titleName, let place = renamingPlace {
+                RenameField(name: name, font: Theme.nsFont(30, bold: true)) { renameTitle(place, to: $0) } done: { renaming = false }
                     .frame(maxWidth: 420)
             } else {
                 Text(model.title(model.place))
                     .font(Theme.title)
                     .lineLimit(1)
-                    .onTapGesture(count: 2) { if titleName != nil { renaming = true } }
+                    .onTapGesture(count: 2) {
+                        guard titleName != nil else { return }
+                        renamingPlace = model.place
+                        renaming = true
+                    }
             }
             Spacer(minLength: 10)
             if model.place == .inbox || model.place == .anytime {
@@ -128,6 +134,8 @@ struct Header: View {
             }
             .help("description (⌥⌘I)")
         }
+        // Another place: what was typed is kept (for the place it was typed for), and it's done.
+        .onChange(of: model.place) { renaming = false }
         .padding(.top, 30)
         .padding(.leading, model.showSidebar || model.panelOrder.filter(model.isShown).first != .tasks ? 30 : 86)
         .padding(.trailing, 22)
@@ -338,7 +346,7 @@ struct TaskListView: View {
 
     var body: some View {
         let groups = model.groups
-        let now = model.timers.now
+        let now = model.clock
         let today = Day.today(now)
         ScrollViewReader { proxy in
             ScrollView {
@@ -487,9 +495,12 @@ struct GroupHeading: View {
             return true
         }
         if Drag.kind(item) == "list", let here = headsList {
-            let lists = snap.lists.map(\.id)
-            let next = lists.firstIndex(of: here).flatMap { $0 + 1 < lists.count ? lists[$0 + 1] : nil }
-            model.moveList(Drag.value(item), before: spot == .above ? here : next, group: nil)
+            // In the order all shows them (the sidebar's), into the group the heading's list is in.
+            let shown = model.groups.compactMap { $0.id.hasPrefix("list:") ? $0.listId : nil }
+            let next = shown.firstIndex(of: here).flatMap { $0 + 1 < shown.count ? shown[$0 + 1] : nil }
+            let groupIds = Set(snap.groups.map(\.id))
+            let group = snap.list(here)?.group.flatMap { groupIds.contains($0) ? $0 : nil }
+            model.moveList(Drag.value(item), before: spot == .above ? here : next, group: .some(group))
             return true
         }
         return false

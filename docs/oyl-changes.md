@@ -48,3 +48,22 @@ When it's taken in, write `3` into `~/Oyl/.toyl-sync`.
   parses quick add itself, it may offer the same words, or leave them be (then such a line becomes a task title).
 
 When it's taken in, write `4` into `~/Oyl/.toyl-sync`.
+
+## 5 · 2026-11-23 · fixes Oyl should know about (calendar links, Canvas, toyl.md, dates)
+
+- A task's `event` link can now carry `agreed` (the task's `due|time|duration|title` when it and its event last
+  agreed) and `seen` (the event's last-changed time then, in ms). toyl uses them to tell which side moved. Keep them
+  as you keep every field; if Oyl changes a linked task's day or time, leave them alone (toyl sees the change).
+- A Canvas task's `canvas` link can carry `due` (what Canvas last said, "2026-12-01 23:59"). toyl moves the task
+  only when Canvas's date changes, so a task moved by hand (in toyl or Oyl) stays where it was put. Keep the field.
+- toyl's folder has a new file, `.toyl.md.base`: the toyl.md toyl last wrote. When toyl.md is edited, only lines
+  that differ from it are taken in, so a stale toyl.md can no longer undo what Oyl changed in toyl.json (a task
+  Oyl checked off stays checked off). Oyl needn't do anything; don't delete the file.
+- toyl.md no longer writes `by <aim>` on a task's line (toyl has no aims).
+- The shared date reading (`IdeaQuick`, copied from Oyl) changed in two places; Oyl may want the same:
+  - a count with no "in" before it isn't a day: "review 3 months of statements", "plan 2 weeks of meals" (it was
+    read as due in 3 months / 2 weeks). "in 3 weeks", "within 2 weeks", "3 weeks or so" still are.
+  - the month you're in means this month: "in nov" typed in November is now, not next November.
+  `takeAim` has a sibling, `takeAimTimed`, that also returns a time said with the aim ("by fri 5pm").
+
+When it's taken in, write `5` into `~/Oyl/.toyl-sync`.

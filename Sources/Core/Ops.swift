@@ -181,7 +181,7 @@ enum Ops {
     static func day(_ text: String, weekStart: Int, now: Date = Date()) -> String?? {
         let text = text.trimmingCharacters(in: .whitespaces)
         if ["", "none", "null", "no", "clear", "-"].contains(text.lowercased()) { return .some(nil) }
-        if Day.isValid(text) { return .some(text) }
+        if Day.isValid(text), let date = Day.date(text) { return .some(Day.string(date)) }
         if let due = TodQuick.read(text, now: now, weekStart: weekStart).due { return .some(due) }
         return nil
     }
@@ -202,7 +202,7 @@ enum Ops {
     static func aim(_ text: String, weekStart: Int, now: Date = Date()) -> String?? {
         let text = text.trimmingCharacters(in: .whitespaces)
         if ["", "none", "null", "no", "clear", "-"].contains(text.lowercased()) { return .some(nil) }
-        if Day.isValid(text) { return .some(text) }
+        if Day.isValid(text), let date = Day.date(text) { return .some(Day.string(date)) }
         var rest = "by " + text
         if let aim = IdeaQuick.takeAim(&rest, now: now, weekStart: weekStart) { return .some(aim) }
         rest = text

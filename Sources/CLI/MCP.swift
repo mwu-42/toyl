@@ -9,8 +9,8 @@ enum MCP {
 
     static let instructions = """
         toyl is the user's to-do list (a Mac app; "things off your list"). Call get_overview first to get your bearings. \
-        Lists hold tasks (the inbox holds unfiled ones; "ideas" holds loose ideas); tasks have tags, a deadline ("due", \
-        YYYY-MM-DD, with an optional 24-hour "time") and/or an aim (a day to have it done by, roughly, which can slip). \
+        Lists hold tasks (the inbox holds unfiled ones; "ideas" holds loose ideas); tasks have tags and a day they're due ("due", \
+        YYYY-MM-DD, with an optional 24-hour "time"); "by fri" and "next week" are due days too. \
         There are no priorities: what's pressing is what's due; "pinned" keeps a task at the top of today. add_task's \
         "text" understands quick add ("essay draft fri 5pm #cs ~2h"). Refer to tasks by id. Keep the user's own wording \
         and case: don't capitalize or reword their tasks unless asked. Before deleting or bulk-changing, say what you'll do. \
@@ -23,11 +23,13 @@ enum MCP {
         signal(SIGPIPE, SIG_IGN)
         while let line = readLine(strippingNewline: true) {
             guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
-            guard let data = line.data(using: .utf8), let message = try? JSONSerialization.jsonObject(with: data) else {
+            guard let data = line.data(using: .utf8), let message = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else {
                 send(failure(-32700, "parse error", id: NSNull()))
                 continue
             }
             if let batch = message as? [Any] {
+                // An empty batch is itself an invalid request.
+                guard !batch.isEmpty else { send(failure(-32600, "invalid request", id: NSNull())); continue }
                 let replies = batch.compactMap(handle)
                 if !replies.isEmpty { send(replies) }
             } else if let reply = handle(message) {
@@ -49,8 +51,12 @@ enum MCP {
     static func handle(_ message: Any) -> [String: Any]? {
         guard let m = message as? [String: Any] else { return failure(-32600, "invalid request", id: NSNull()) }
         let id = m["id"]
-        // A reply to something we asked (we never do), or a notification: nothing to say.
-        guard let method = m["method"] as? String else { return nil }
+        // A reply to something we asked (we never do): nothing to say. A request with no method
+        // is an invalid one.
+        guard let method = m["method"] as? String else {
+            if m["result"] != nil || m["error"] != nil { return nil }
+            return failure(-32600, "invalid request", id: id ?? NSNull())
+        }
         let params = m["params"] as? [String: Any] ?? [:]
         let isNotification = id == nil || id is NSNull
         func reply(_ result: [String: Any]) -> [String: Any]? { isNotification ? nil : ["jsonrpc": "2.0", "id": id!, "result": result] }
@@ -149,7 +155,7 @@ enum Tools {
         "tags": strings("tags, without #"),
         "due": nullableString("deadline: YYYY-MM-DD or words like \"fri\", \"tomorrow\"; null to clear"),
         "time": nullableString("time on the due day, \"HH:MM\" 24-hour or \"5pm\"; null to clear"),
-        "aim": nullableString("aim (a day to have it done by roughly, can slip): YYYY-MM-DD or \"next week\", \"early dec\"; null to clear"),
+        "aim": nullableString("a loose day (\"next week\", \"early dec\"): it becomes the due day unless due is given"),
         "repeat": nullableString("daily, weekdays, weekly, biweekly, monthly or yearly; null to stop"),
         "duration_minutes": ["type": ["integer", "null"], "description": "how long it should take, in minutes"],
         "pinned": bool("kept at the top of today"),
@@ -159,7 +165,7 @@ enum Tools {
 
     static var definitions: [[String: Any]] {
         var add = taskFields
-        add["text"] = string("quick add: the whole task in words, e.g. \"essay draft fri 5pm #cs ~2h\" (#word is a list if one is named so, else a tag; \"by fri\" is an aim; \"!\" pins; \" // \" starts notes). Fields given apart win over what text says.")
+        add["text"] = string("quick add: the whole task in words, e.g. \"essay draft fri 5pm #cs ~2h\" (#word is a list if one is named so, else a tag; \"by fri\" is when it's due; \"!\" pins; \" // \" starts notes; text starting /list, /project, /group, /filter or /timer makes that instead). Fields given apart win over what text says.")
         add["subtasks"] = strings("its sublist: items to add under it (call it a sublist to the user, not steps)")
         add["idea"] = bool("put it in ideas (loose ideas, to come back to)")
         var update = taskFields
@@ -252,7 +258,7 @@ enum Tools {
         switch name {
         case "get_overview":
             var overview = Ops.overview(try Actions.snapshot(), now: now)
-            overview["how"] = "dates YYYY-MM-DD; times 24-hour; due = deadline, aim = soft target; use ids"
+            overview["how"] = "dates YYYY-MM-DD; times 24-hour; due = when it's due (no aims); use ids"
             return overview
         case "list_tasks":
             let snap = try Actions.snapshot()
@@ -285,13 +291,25 @@ enum Tools {
             return ["task": Ops.json(task, in: try Actions.snapshot(), now: now), "note": snap.list(task.listId) == nil ? "made a new list" : "added"]
         case "add_tasks":
             guard let items = a["tasks"] as? [Any], !items.isEmpty else { throw Ops.Failure("no tasks given") }
+            // Each is added or said why not: what was added is always said, so trying again
+            // doesn't add those twice.
             var added: [TaskModel] = []
-            for item in items {
-                guard let fields = item as? [String: Any] else { continue }
-                added.append(try Actions.add(addRequest(fields)))
+            var made: [[String: Any]] = []
+            var problems: [String] = []
+            for (index, item) in items.enumerated() {
+                guard let fields = item as? [String: Any] else { problems.append("item \(index + 1): not an object"); continue }
+                do {
+                    if let text = fields["text"] as? String, let thing = try Actions.command(text) { made.append(thing.json); continue }
+                    added.append(try Actions.add(addRequest(fields)))
+                } catch {
+                    problems.append("item \(index + 1): \(error)")
+                }
             }
             let snap = try Actions.snapshot()
-            return ["added": added.count, "tasks": added.map { Ops.json(snap.task($0.id) ?? $0, in: snap, now: now) }]
+            var out: [String: Any] = ["added": added.count, "tasks": added.map { Ops.json(snap.task($0.id) ?? $0, in: snap, now: now) }]
+            if !made.isEmpty { out["made"] = made }
+            if !problems.isEmpty { out["not_added"] = problems }
+            return out
         case "update_task":
             var r = Actions.EditRequest()
             r.title = a["title"] as? String
@@ -359,7 +377,9 @@ enum Tools {
         case "autosort_inbox":
             let snap = try Actions.snapshot()
             if a["everything"] as? Bool == true {
-                let sorted = try waitFor { await Actions.sortInbox(snap) }
+                let ask: ((TaskModel, [ListModel], [String: [String]]) async -> String?)? = OnDevice.isAvailable
+                    ? { task, lists, examples in await OnDevice.list(for: task.title, among: lists, examples: examples) } : nil
+                let sorted = try waitFor { await Actions.sortInbox(snap, ask: ask) }
                 _ = try Actions.applyAutosort(sorted.suggestions)
                 return ["sorted": sorted.suggestions.filter { $0.list != nil }.map { ["task_id": $0.task.id, "title": $0.task.title, "list": $0.list?.displayName ?? ""] },
                         "left": sorted.left.map { ["task_id": $0.id, "title": $0.title] }]
@@ -513,7 +533,7 @@ enum Prompts {
             text = """
                 Turn this brain dump into toyl tasks. Call list_lists first to see my lists, then add_tasks once with \
                 every task, keeping my own words (lower case as I wrote them), putting each in the list it belongs in \
-                (or the inbox if unsure), with deadlines only where I gave a day, aims for vague timings ("next week"), \
+                (or the inbox if unsure), with deadlines only where I gave a day, the same for vague timings ("next week" is a due day), \
                 and loose ideas as ideas. Then tell me what you added.
 
                 \(dump)

@@ -97,9 +97,10 @@ enum Actions {
             guard let clock = Ops.time(time, now: now) else { throw Ops.Failure("“\(time)” isn't a time toyl can read") }
             draft.time = clock
         }
+        // toyl has no aims: one given is when it's due, unless a due day is given too.
         if let aim = r.aim {
-            guard let day = Ops.aim(aim, weekStart: snap.weekStart, now: now) else { throw Ops.Failure("“\(aim)” isn't an aim toyl can read") }
-            draft.target = day
+            guard let day = Ops.aim(aim, weekStart: snap.weekStart, now: now) else { throw Ops.Failure("“\(aim)” isn't a day toyl can read") }
+            if draft.due == nil, let day { draft.due = day }
         }
         if let repeats = r.repeats {
             guard let rule = Ops.repeats(repeats) else { throw Ops.Failure("“\(repeats)” isn't a repeat (daily, weekdays, weekly, biweekly, monthly, yearly)") }
@@ -115,9 +116,15 @@ enum Actions {
         let id = UID.make()
         let projectName = r.project?.trimmingCharacters(in: .whitespaces).nilIfEmpty
         let newProject = UID.make()
+        let newList = UID.make()
         let saved = try save { doc in
             var draft = draft
             if let projectName {
+                // A list that's to be made ("~thesis") is made first, so the project goes in it.
+                if draft.listId == nil, let name = draft.newListName {
+                    draft.listId = doc.list(named: name)?.id ?? doc.addList(name: name, id: newList, now: now)
+                    draft.newListName = nil
+                }
                 let list = draft.listId ?? ListModel.inbox
                 draft.project = Snapshot(doc).list(list)?.projects.first { $0.name.lowercased() == projectName.lowercased() }?.id
                     ?? doc.addProject(to: list, name: projectName, id: newProject)
@@ -170,8 +177,9 @@ enum Actions {
             p.time = clock
         }
         if let aim = r.aim {
-            guard let day = Ops.aim(aim, weekStart: snap.weekStart, now: now) else { throw Ops.Failure("“\(aim)” isn't an aim toyl can read") }
-            p.target = day
+            guard let day = Ops.aim(aim, weekStart: snap.weekStart, now: now) else { throw Ops.Failure("“\(aim)” isn't a day toyl can read") }
+            if r.due == nil { p.due = .some(day) }
+            p.target = .some(nil)
         }
         if let ref = r.list {
             guard let list = Ops.list(ref, in: snap) else { throw Ops.Failure("no list called “\(ref)” (make it with new-list)") }
@@ -376,7 +384,8 @@ enum Actions {
 
     static func applyAutosort(_ suggestions: [Suggestion]) throws -> Snapshot {
         try save { doc in
-            for s in suggestions {
+            // Only what's still open in the inbox: one filed by hand while autosort thought stays put.
+            for s in suggestions where doc.task(s.task.id).map({ $0.listId == ListModel.inbox && !$0.done }) ?? false {
                 var p = TaskPatch()
                 if let list = s.list { p.listId = list.id }
                 p.addTags = s.tags

@@ -42,24 +42,23 @@ struct TaskRow: View {
             }
             Spacer(minLength: 6)
             if let timer {
-                TimerChip(model: model, timer: timer, now: now)
+                TimerChip(model: model, timer: timer)
                     .transition(.scale(scale: 0.6).combined(with: .opacity))
             }
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 10)
         .background(RoundedRectangle(cornerRadius: 7).fill(targeted ? Theme.selectionFocused : selected ? Theme.selection : hovering ? Theme.hover : .clear))
-        .background(Theme.paper.opacity(model.swipe?.id == task.id ? 1 : 0))
-        .offset(x: model.swipe?.id == task.id ? model.swipe!.offset : 0)
-        .background { SwipeBehind(offset: model.swipe?.id == task.id ? model.swipe!.offset : 0, inProgress: model.isInProgress(task), timed: timer != nil) }
+        .modifier(SwipeOffset(swiping: model.swiping, id: task.id, inProgress: model.isInProgress(task), timed: timer != nil))
         .contentShape(Rectangle())
         .onHover { inside in
             hovering = inside
             if inside { model.hoveredTask = task.id } else if model.hoveredTask == task.id { model.hoveredTask = nil }
         }
+        .onDisappear { if model.hoveredTask == task.id { model.hoveredTask = nil } }
         .onTapGesture { click() }
         .contextMenu { TaskMenu(model: model, ids: menuTargets) }
-        .toylDrag(model, "toyl:" + dragTargets.joined(separator: ",")) {
+        .toylDrag(model, { "toyl:" + dragTargets.joined(separator: ",") }) {
             TaskDragPreview(title: model.display(task.title), count: dragTargets.count)
         }
         // Tasks (or text) go above or below it, by the half the pointer's in; an event from the
@@ -139,7 +138,7 @@ struct TaskRow: View {
             }
         }
         if !task.tags.isEmpty { parts.append(Text(task.tags.map { "#" + model.display($0) }.joined(separator: " "))) }
-        if !NoteLinks.withoutLinks(task.notes).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { parts.append(Text(Image(systemName: "text.alignleft"))) }
+        if !task.notes.isEmpty, NoteLinks.hasWords(task.notes) { parts.append(Text(Image(systemName: "text.alignleft"))) }
         if task.event != nil { parts.append(Text(Image(systemName: "calendar"))) }
         if task.pinned { parts.append(Text(Image(systemName: "pin.fill")).foregroundColor(Theme.accent)) }
         if task.someday, model.place != .ideas { parts.append(Text(Image(systemName: "lightbulb"))) }
@@ -175,9 +174,13 @@ struct TimerMenu: View {
 struct TimerChip: View {
     @ObservedObject var model: AppModel
     let timer: TimerModel
-    let now: Date
 
+    /// It ticks on its own (each second while it's going), not the whole list.
     var body: some View {
+        TimelineView(.periodic(from: .now, by: timer.isRunning ? 1 : 3600)) { context in chip(now: context.date) }
+    }
+
+    private func chip(now: Date) -> some View {
         Button { model.timers.togglePause(timer.id) } label: {
             HStack(spacing: 5) {
                 if timer.kind == .countdown {
@@ -515,5 +518,22 @@ struct SubEditor: View {
         let typed = text.trimmingCharacters(in: .whitespaces)
         if leave { Keys.letGo() }
         done(keep && !typed.isEmpty && typed != title ? typed : nil)
+    }
+}
+
+/// A row pulled sideways by a swipe, with what it'd do showing behind it. It watches the swipe
+/// alone, so a swipe redraws this, not the list.
+struct SwipeOffset: ViewModifier {
+    @ObservedObject var swiping: Swiping
+    let id: String
+    let inProgress: Bool
+    let timed: Bool
+
+    func body(content: Content) -> some View {
+        let offset = swiping.swipe?.id == id ? swiping.swipe?.offset ?? 0 : 0
+        content
+            .background(Theme.paper.opacity(offset != 0 ? 1 : 0))
+            .offset(x: offset)
+            .background { SwipeBehind(offset: offset, inProgress: inProgress, timed: timed) }
     }
 }

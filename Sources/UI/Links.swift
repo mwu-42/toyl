@@ -19,6 +19,17 @@ enum NoteLinks {
     }
 
     /// The text with its web links taken out (they show as cards), blank lines closed up.
+    /// Whether there are words besides links (for a row's notes icon): kept for each text, so a
+    /// row redrawn doesn't look for links again.
+    @MainActor static func hasWords(_ text: String) -> Bool {
+        if let kept = wordsKept[text] { return kept }
+        let has = !withoutLinks(text).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if wordsKept.count > 2000 { wordsKept.removeAll() }
+        wordsKept[text] = has
+        return has
+    }
+    @MainActor private static var wordsKept: [String: Bool] = [:]
+
     static func withoutLinks(_ text: String) -> String {
         guard let detector, !text.isEmpty else { return text }
         var out = text

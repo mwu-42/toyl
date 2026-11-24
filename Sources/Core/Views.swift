@@ -222,10 +222,9 @@ enum Views {
             }
             return ordered.map(\.task)
         case .due:
-            return tasks.sorted { a, b in
-                let x = a.dueDate ?? a.targetDate ?? .distantFuture, y = b.dueDate ?? b.targetDate ?? .distantFuture
-                return x != y ? x < y : tiebreak(a, b)
-            }
+            // Each one's moment worked out once, not in every comparison.
+            let keyed = tasks.map { ($0, $0.dueDate ?? $0.targetDate ?? .distantFuture) }
+            return keyed.sorted { a, b in a.1 != b.1 ? a.1 < b.1 : tiebreak(a.0, b.0) }.map(\.0)
         case .created:
             return tasks.sorted { a, b in
                 let x = a.done ? (a.doneAt ?? a.createdAt) : a.createdAt, y = b.done ? (b.doneAt ?? b.createdAt) : b.createdAt
@@ -445,12 +444,14 @@ struct Query: Equatable {
     var lists: [String] = []
     var notLists: [String] = []
     var due: [Due] = []
+    /// `-due:none` (has a day), `-before:fri`…: none of these.
+    var notDue: [Due] = []
     var status: Status?
     var flags: [String: Bool] = [:]
 
     var isEmpty: Bool {
         words.isEmpty && notWords.isEmpty && tags.isEmpty && notTags.isEmpty && lists.isEmpty && notLists.isEmpty
-            && due.isEmpty && status == nil && flags.isEmpty
+            && due.isEmpty && notDue.isEmpty && status == nil && flags.isEmpty
     }
 
     static func parse(_ text: String, weekStart: Int = 1, now: Date = Date()) -> Query {
@@ -486,28 +487,33 @@ struct Query: Equatable {
                 negated ? q.notLists.append(name) : q.lists.append(name)
             } else if lower.hasPrefix("due:") {
                 let v = value(after: "due:").lowercased()
+                var rule: Due?
                 switch v {
-                case "overdue", "late": q.due.append(.overdue)
-                case "today": q.due.append(.today)
-                case "tomorrow": q.due.append(.tomorrow)
-                case "week", "7days": q.due.append(.week)
-                case "month": q.due.append(.month)
-                case "soon": q.due.append(.soon)
-                case "none", "no": q.due.append(.none)
-                case "any", "yes": q.due.append(.any)
-                default:
-                    if let day = TodQuick.read(v, now: now, weekStart: weekStart).due { q.due.append(.on(day)) }
+                case "overdue", "late": rule = .overdue
+                case "today": rule = .today
+                case "tomorrow": rule = .tomorrow
+                case "week", "7days": rule = .week
+                case "month": rule = .month
+                case "soon": rule = .soon
+                case "none", "no": rule = Due.none
+                case "any", "yes": rule = .any
+                default: rule = TodQuick.read(v, now: now, weekStart: weekStart).due.map { .on($0) }
                 }
+                if let rule { negated ? q.notDue.append(rule) : q.due.append(rule) }
             } else if lower.hasPrefix("before:") {
-                if let day = TodQuick.read(value(after: "before:"), now: now, weekStart: weekStart).due { q.due.append(.before(day)) }
+                if let day = TodQuick.read(value(after: "before:"), now: now, weekStart: weekStart).due {
+                    negated ? q.notDue.append(.before(day)) : q.due.append(.before(day))
+                }
             } else if lower.hasPrefix("after:") {
-                if let day = TodQuick.read(value(after: "after:"), now: now, weekStart: weekStart).due { q.due.append(.after(day)) }
+                if let day = TodQuick.read(value(after: "after:"), now: now, weekStart: weekStart).due {
+                    negated ? q.notDue.append(.after(day)) : q.due.append(.after(day))
+                }
             } else if lower.hasPrefix("is:") {
                 let v = String(lower.dropFirst(3))
                 switch v {
-                case "open": q.status = .open
-                case "done", "completed": q.status = .done
-                case "all", "any": q.status = .any
+                case "open": q.status = negated ? .done : .open
+                case "done", "completed": q.status = negated ? .open : .done
+                case "all", "any": if !negated { q.status = .any }
                 default: q.flags[v] = !negated
                 }
             } else if lower.hasPrefix("has:") {
@@ -556,23 +562,23 @@ struct Query: Equatable {
         if !lists.isEmpty, !lists.contains(where: { Self.isList($0, list) }) { return false }
         if notLists.contains(where: { Self.isList($0, list) }) { return false }
         let today = Day.today(now)
-        for rule in due {
-            let ok: Bool
+        func holds(_ rule: Due) -> Bool {
             switch rule {
-            case .overdue: ok = t.isLate(at: now)
-            case .today: ok = t.due == today
-            case .tomorrow: ok = t.due == Day.adding(1, to: today)
-            case .week: ok = t.due.map { $0 >= today && $0 <= (Day.adding(6, to: today) ?? today) } ?? false
-            case .month: ok = t.due.map { $0 >= today && $0 <= (Day.adding(30, to: today) ?? today) } ?? false
-            case .soon: ok = t.isLate(at: now) || (t.due.map { $0 <= (Day.adding(3, to: today) ?? today) } ?? false)
-            case .none: ok = t.due == nil
-            case .any: ok = t.due != nil
-            case .on(let day): ok = t.due == day
-            case .before(let day): ok = t.due.map { $0 < day } ?? false
-            case .after(let day): ok = t.due.map { $0 > day } ?? false
+            case .overdue: return t.isLate(at: now)
+            case .today: return t.due == today
+            case .tomorrow: return t.due == Day.adding(1, to: today)
+            case .week: return t.due.map { $0 >= today && $0 <= (Day.adding(6, to: today) ?? today) } ?? false
+            case .month: return t.due.map { $0 >= today && $0 <= (Day.adding(30, to: today) ?? today) } ?? false
+            case .soon: return t.isLate(at: now) || (t.due.map { $0 <= (Day.adding(3, to: today) ?? today) } ?? false)
+            case .none: return t.due == nil
+            case .any: return t.due != nil
+            case .on(let day): return t.due == day
+            case .before(let day): return t.due.map { $0 < day } ?? false
+            case .after(let day): return t.due.map { $0 > day } ?? false
             }
-            if !ok { return false }
         }
+        if !due.allSatisfy(holds) { return false }
+        if notDue.contains(where: holds) { return false }
         for (flag, wanted) in flags {
             let has: Bool
             switch flag {

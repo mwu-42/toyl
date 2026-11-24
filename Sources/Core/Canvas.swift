@@ -212,17 +212,25 @@ enum Canvas {
             outcome.seen.append(item.id)
             let day = Day.string(item.due)
             let time = item.allDay ? nil : Day.clock(item.due)
-            if let task = snap.tasks.first(where: { $0.canvas?.id == item.id }) {
+            let said = day + (time.map { " " + $0 } ?? "")
+            if let task = snap.tasks.first(where: { $0.canvas?.id == item.id }), var link = task.canvas {
                 guard !task.done else { continue }
                 if item.finished {
                     outcome.finish.append(task.id)
                     outcome.done.append(task.title)
-                } else if task.due != day || task.time != time {
+                } else if link.due != said {
+                    // Canvas's own date changed (or isn't known yet): the task moves only if Canvas
+                    // moved it, never back from a day it was moved to here.
+                    let moved = link.due != nil && (task.due != day || task.time != time)
+                    link.due = said
                     var p = TaskPatch()
-                    p.due = .some(day)
-                    p.time = .some(time)
+                    p.canvas = link
+                    if moved {
+                        p.due = .some(day)
+                        p.time = .some(time)
+                        outcome.moved.append(task.title)
+                    }
                     outcome.patches.append((task.id, p))
-                    outcome.moved.append(task.title)
                 }
                 continue
             }
@@ -233,7 +241,7 @@ enum Canvas {
             draft.listId = list(for: item.course, in: snap)?.id ?? ListModel.inbox
             draft.source = "canvas"
             draft.notes = item.url ?? ""
-            draft.canvas = CanvasLink(id: item.id, course: item.course, url: item.url)
+            draft.canvas = CanvasLink(id: item.id, course: item.course, url: item.url, due: said)
             draft.position = .bottom
             outcome.drafts.append(draft)
             outcome.added.append(draft.title)

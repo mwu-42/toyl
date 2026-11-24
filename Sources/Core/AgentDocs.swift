@@ -29,7 +29,7 @@ enum AgentDocs {
            - `toyl today`, `toyl inbox`, `toyl upcoming`, `toyl ls [filter]`, `toyl show <id>`, `toyl lists`, `toyl tags`, `toyl agenda`
            - `toyl add "essay draft fri 5pm #cs ~2h"` (read as quick add reads it, below)
            - `toyl done <id or title>`, `toyl undo <id>`, `toyl rm <id>`
-           - `toyl edit <id> --title … --due fri --time 17:00 --list cs --tag +reading -old --notes … --pin --someday --repeat weekly --duration 45m`
+           - `toyl edit <id> --title … --due fri --time 17:00 --list cs --tag +reading --tag -old --notes … --pin --someday --repeat weekly --duration 45m`
            - `toyl merge <list> [into]`: fold one list into another (the inbox, if none's named)
            - `toyl timer start <id> [25m]`, `toyl timer stop`, `toyl timers`
            - `toyl new-list "name" [--group school]`, `toyl autosort [--apply|--all]` (`--all` sorts the whole inbox; what fits nowhere stays)

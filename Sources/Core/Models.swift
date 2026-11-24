@@ -23,6 +23,7 @@ enum Day {
     static func date(_ day: String) -> Date? {
         let parts = day.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3,
+              (1...12).contains(parts[1]), (1...31).contains(parts[2]), parts[0] > 1900,
               let date = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])),
               calendar.component(.day, from: date) == parts[2] else { return nil }
         return date
@@ -108,11 +109,31 @@ struct EventLink: Equatable, Hashable {
     /// toyl never changes the event. Otherwise (put on the calendar from toyl) they keep in step
     /// both ways.
     var follows = false
+    /// Where the two last agreed: the task's day, time, length and title then (`signature`), and
+    /// when the event had last been changed then (ms). So a sync can tell which of them moved
+    /// since, rather than guessing from the task's last edit (a sublist tick isn't a move).
+    var agreed: String?
+    var seen: Double?
+
+    init(id: String, calendar: String, follows: Bool = false, agreed: String? = nil, seen: Double? = nil) {
+        self.id = id
+        self.calendar = calendar
+        self.follows = follows
+        self.agreed = agreed
+        self.seen = seen
+    }
 
     var entry: [String: Any] {
         var e: [String: Any] = ["id": id, "calendar": calendar]
         if follows { e["follows"] = true }
+        if let agreed { e["agreed"] = agreed }
+        if let seen { e["seen"] = seen }
         return e
+    }
+
+    /// What of a task its event keeps in step with.
+    static func signature(_ task: TaskModel) -> String {
+        [task.due ?? "", task.time ?? "", task.duration.map(String.init) ?? "", task.title].joined(separator: "|")
     }
 }
 
@@ -167,17 +188,22 @@ struct CanvasLink: Equatable, Hashable {
     let id: String          // "assignment:123", "quiz:45", "discussion_topic:67"
     let course: String
     let url: String?
+    /// When Canvas last said it's due ("2026-12-01 23:59"): the task moves only when Canvas's own
+    /// date changes, never back from where it was moved here.
+    var due: String?
 
     var entry: [String: Any] {
         var e: [String: Any] = ["id": id, "course": course]
         if let url { e["url"] = url }
+        if let due { e["due"] = due }
         return e
     }
 
-    init(id: String, course: String, url: String?) {
+    init(id: String, course: String, url: String?, due: String? = nil) {
         self.id = id
         self.course = course
         self.url = url
+        self.due = due
     }
 
     init?(entry e: Any?) {
@@ -185,6 +211,7 @@ struct CanvasLink: Equatable, Hashable {
         self.id = id
         course = e["course"] as? String ?? ""
         url = e["url"] as? String
+        due = e["due"] as? String
     }
 }
 
@@ -271,7 +298,8 @@ struct TaskModel: Identifiable, Equatable, Hashable {
         duration = (e["duration"] as? NSNumber)?.intValue
         spent = (e["spent"] as? NSNumber)?.intValue ?? 0
         if let link = e["event"] as? [String: Any], let id = link["id"] as? String, let calendar = link["calendar"] as? String {
-            event = EventLink(id: id, calendar: calendar, follows: link["follows"] as? Bool ?? false)
+            event = EventLink(id: id, calendar: calendar, follows: link["follows"] as? Bool ?? false,
+                              agreed: link["agreed"] as? String, seen: (link["seen"] as? NSNumber)?.doubleValue)
         } else {
             event = nil
         }

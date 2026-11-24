@@ -180,7 +180,7 @@ enum KeysTry {
                 enter()
                 check("Return in the description keeps it and lets go", model.snap.task(mom.id)?.title == "call momx soon" && !typing)
             } else {
-                check("the description's title is there", false)
+                check("the description's title is there", false, "shown \(model.showInspector) selected \(model.selectedTask?.title ?? "none") place \(model.place)")
             }
             type(" ")
             check("space again hides it", model.showInspector == shown)

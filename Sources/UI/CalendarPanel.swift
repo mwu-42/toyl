@@ -86,7 +86,7 @@ private struct PanelHeading: View {
     let day: String
 
     var body: some View {
-        let today = Day.today(model.timers.now)
+        let today = Day.today(model.clock)
         VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text(title).font(Theme.font(21, bold: true)).lineLimit(1).contentTransition(.opacity)
@@ -197,7 +197,7 @@ private struct WeekStrip: View {
     let day: String
 
     var body: some View {
-        let today = Day.today(model.timers.now)
+        let today = Day.today(model.clock)
         HStack(spacing: 0) {
             ForEach(CalendarDays.week(of: day, start: model.snap.weekStart), id: \.self) { date in
                 DayCell(model: model, day: date, selected: date == day, isToday: date == today)
@@ -245,7 +245,7 @@ private struct WeekHeader: View {
     let width: CGFloat
 
     var body: some View {
-        let today = Day.today(model.timers.now)
+        let today = Day.today(model.clock)
         let column = HoursView.column(width: width, days: days.count)
         HStack(spacing: 0) {
             Color.clear.frame(width: HoursView.gutter, height: 1)
@@ -369,7 +369,7 @@ private struct HoursView: View {
     private var compact: Bool { days.count > 1 }
 
     var body: some View {
-        let now = model.timers.now
+        let now = model.clock
         let today = Day.today(now)
         ScrollViewReader { proxy in
             ScrollView {
@@ -676,7 +676,7 @@ private struct MonthView: View {
         let days = model.shownDays
         let rows = max(days.count / 7, 1)
         let column = (width - 12) / 7
-        let today = Day.today(model.timers.now)
+        let today = Day.today(model.clock)
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 ForEach(days.prefix(7), id: \.self) { date in

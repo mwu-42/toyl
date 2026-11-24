@@ -243,9 +243,20 @@ final class CalendarBridge: ObservableObject {
                 }
                 let (from, to) = Self.loadedRange()
                 var found: [GEvent] = []
+                var missed = 0
                 for calendar in google {
-                    if let some = try? await GoogleCalendarAPI.events(calendar.id, from: from, to: to) { found += some }
+                    do {
+                        found += try await GoogleCalendarAPI.events(calendar.id, from: from, to: to)
+                    } catch GoogleAuth.Failure.expired {
+                        throw GoogleAuth.Failure.expired
+                    } catch {
+                        // Couldn't read this one (offline, a feed that's down): what it had stays.
+                        missed += 1
+                        found += raw.filter { $0.calendarId == calendar.id }
+                    }
                 }
+                // Nothing read at all (asleep, offline): keep everything as it was, and don't sync on nothing.
+                if missed == google.count, !google.isEmpty { throw GoogleAuth.Failure.said("nothing came back") }
                 raw = found
                 let fresh = found.filter { $0.status != "cancelled" }.map(show).sorted { $0.start < $1.start }
                 if fresh != events { events = fresh }
@@ -271,9 +282,20 @@ final class CalendarBridge: ObservableObject {
                         title: event.title.isEmpty ? "busy" : event.title, start: event.start, end: event.end, allDay: event.allDay,
                         color: label?.color ?? calendar?.color ?? "#8c8c8c", calendarId: event.calendarId,
                         calendarTitle: calendar?.name ?? "", label: label?.name, location: event.location.isEmpty ? nil : event.location,
-                        taskId: event.taskId ?? store.snap.tasks.first { $0.event?.id == event.id }?.id,
+                        taskId: event.taskId ?? linkedTask(event.id),
                         notes: Self.plain(event.description), link: event.link)
     }
+
+    /// The task tied to an event, from an index made once for each version of the list (not a
+    /// search of every task for every event).
+    private func linkedTask(_ eventId: String) -> String? {
+        if linkedIndex?.version != store.version {
+            let pairs = store.snap.tasks.compactMap { task in task.event.map { ($0.id, task.id) } }
+            linkedIndex = (store.version, Dictionary(pairs, uniquingKeysWith: { first, _ in first }))
+        }
+        return linkedIndex?.map[eventId]
+    }
+    private var linkedIndex: (version: Int, map: [String: String])?
 
     /// Google keeps descriptions as a little HTML: as plain lines.
     static func plain(_ html: String) -> String {
@@ -515,24 +537,50 @@ final class CalendarBridge: ObservableObject {
         guard connected, !syncing else { return }
         syncing = true
         defer { syncing = false }
-        for task in store.snap.tasks where task.event != nil {
-            guard let link = task.event else { continue }
-            let known = raw.first { $0.id == link.id && $0.calendarId == link.calendar }
+        // Done ones are left as they are (and not asked about, which kept growing).
+        let linked = store.snap.tasks.filter { $0.event != nil && !$0.done }.map(\.id)
+        let known = Dictionary(raw.map { ($0.calendarId + "|" + $0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        for id in linked {
+            // As it is now (it may have changed while the last one was being sent).
+            guard let task = store.snap.task(id), let link = task.event, !task.done else { continue }
             let event: GEvent?
-            if let known { event = known } else { event = try? await GoogleCalendarAPI.event(link.calendar, link.id) }
+            if let found = known[link.calendar + "|" + link.id] {
+                event = found
+            } else {
+                do {
+                    event = try await GoogleCalendarAPI.event(link.calendar, link.id)
+                } catch {
+                    // Couldn't ask (offline, signed out): every link stays as it is until next time.
+                    return
+                }
+            }
+            // Only an event Google says is gone (or cancelled) lets go of its task.
             guard let event, event.status != "cancelled" else {
                 var p = TaskPatch()
                 p.event = .some(nil)
-                store.change("calendar", undoable: false) { $0.updateTask(task.id, p) }
+                store.change("calendar", undoable: false) { $0.updateTask(id, p) }
                 continue
             }
             await reconcile(task, event)
         }
     }
 
+    /// Notes where a task and its event agree now (only if that's changed, so it doesn't loop).
+    private func remember(_ taskId: String, event: GEvent) {
+        guard let task = store.snap.task(taskId), var link = task.event else { return }
+        let agreed = EventLink.signature(task)
+        let seen = event.updated.map { $0.timeIntervalSince1970 * 1000 }
+        guard link.agreed != agreed || link.seen != seen else { return }
+        link.agreed = agreed
+        link.seen = seen
+        var p = TaskPatch()
+        p.event = .some(link)
+        store.change("calendar", undoable: false) { $0.updateTask(taskId, p) }
+    }
+
     private func reconcile(_ task: TaskModel, _ event: GEvent) async {
         if task.event?.follows == true { return follow(task, event) }
-        guard let due = task.due else { return }
+        guard let due = task.due, let link = task.event else { return }
         var title = CalendarStyle.title(task.title)
         if event.title.hasSuffix("?"), !title.hasSuffix("?") { title += "?" }
         let length = task.duration.map { Double($0) * 60 } ?? event.end.timeIntervalSince(event.start)
@@ -540,8 +588,17 @@ final class CalendarBridge: ObservableObject {
         guard let wantStart else { return }
         let datesDiffer = event.allDay ? event.day != due : abs(event.start.timeIntervalSince(wantStart)) > 30 || abs(event.end.timeIntervalSince(event.start) - length) > 30
         let titleDiffers = event.title != title
-        guard datesDiffer || titleDiffers else { return }
-        let eventIsNewer = (event.updated ?? .distantPast) > (task.updatedAt ?? .distantPast).addingTimeInterval(2)
+        guard datesDiffer || titleDiffers else { return remember(task.id, event: event) }
+        // Which moved since they last agreed. Only when that can't be told (both, or never
+        // agreed yet), the one changed last wins.
+        let taskMoved = link.agreed.map { $0 != EventLink.signature(task) }
+        let eventMoved = link.seen.map { seen in (event.updated.map { $0.timeIntervalSince1970 * 1000 } ?? 0) > seen + 1 }
+        let eventIsNewer: Bool
+        switch (taskMoved, eventMoved) {
+        case (false?, true?): eventIsNewer = true
+        case (true?, false?): eventIsNewer = false
+        default: eventIsNewer = (event.updated ?? .distantPast) > (task.updatedAt ?? .distantPast).addingTimeInterval(2)
+        }
         if eventIsNewer {
             var p = TaskPatch()
             if datesDiffer {
@@ -551,20 +608,27 @@ final class CalendarBridge: ObservableObject {
             }
             if titleDiffers, CalendarStyle.title(event.title) != CalendarStyle.title(task.title) { p.title = event.title }
             store.change("from the calendar", undoable: false) { $0.updateTask(task.id, p) }
+            remember(task.id, event: event)
         } else {
             var body: [String: Any] = [:]
             if titleDiffers { body["summary"] = title }
             if datesDiffer {
                 let zone = TimeZone.autoupdatingCurrent.identifier
                 if event.allDay {
+                    // As long as it was (an event stretched over three days stays three days).
+                    let days = max(Int((event.end.timeIntervalSince(event.start) / 86400).rounded()), 1)
                     body["start"] = ["date": due]
-                    body["end"] = ["date": Day.adding(1, to: due) ?? due]
+                    body["end"] = ["date": Day.adding(days, to: due) ?? due]
                 } else {
                     body["start"] = ["dateTime": GoogleTime.string(wantStart), "timeZone": zone]
                     body["end"] = ["dateTime": GoogleTime.string(wantStart.addingTimeInterval(length)), "timeZone": zone]
                 }
             }
-            if (try? await GoogleCalendarAPI.patch(event.calendarId, event.id, body)) == nil {
+            if let patched = try? await GoogleCalendarAPI.patch(event.calendarId, event.id, body) {
+                // What it is now, so the next change doesn't send the same again.
+                if let at = raw.firstIndex(where: { $0.id == patched.id && $0.calendarId == patched.calendarId }) { raw[at] = patched }
+                remember(task.id, event: patched)
+            } else {
                 note = "couldn't update “\(title)” on google calendar"
             }
         }
@@ -628,28 +692,47 @@ final class CalendarBridge: ObservableObject {
     /// event's left as it is.
     private func importTodoEvents() async {
         guard importTodos else { return }
-        var imported = Set(defaults.stringArray(forKey: "calendar.imported") ?? [])
+        // In the order they came in (oldest first), so trimming drops the oldest.
+        var imported = defaults.stringArray(forKey: "calendar.imported") ?? []
+        var done = Set(imported)
         let snap = store.snap
         let linked = Set(snap.tasks.compactMap { $0.event?.id })
         var added = false
-        for event in raw where event.status != "cancelled" && shownIds.contains(event.calendarId) && event.taskId == nil && !linked.contains(event.id) && !imported.contains(event.id) {
+        // Only the owner's own events: an invitation from anyone titled "todo: …" isn't a task.
+        for event in raw where event.status != "cancelled" && event.mine && shownIds.contains(event.calendarId) && event.taskId == nil
+            && !linked.contains(event.id) && !done.contains(event.id) && !(event.series.map(done.contains) ?? false) {
             let title = event.title
             guard let match = Self.todoPattern.firstMatch(in: title, range: NSRange(location: 0, length: (title as NSString).length)) else { continue }
             var draft = Quick.parse((title as NSString).substring(with: match.range(at: 1)), lists: snap.lists, weekStart: snap.weekStart).draft(source: "calendar")
+            // A list that isn't there isn't made from the calendar.
+            draft.newListName = nil
             if draft.due == nil { draft.due = event.day }
             if !event.allDay, draft.time == nil {
                 draft.time = Day.clock(event.start)
                 let minutes = Int(event.end.timeIntervalSince(event.start) / 60)
                 if draft.duration == nil, (5...480).contains(minutes) { draft.duration = minutes }
             }
-            let notes = event.description.trimmingCharacters(in: .whitespacesAndNewlines)
+            let notes = Self.plain(event.description)
             if draft.notes.isEmpty, !notes.isEmpty { draft.notes = notes }
             let made = draft
             store.change("from the calendar", undoable: false) { $0.addTask(made) }
-            imported.insert(event.id)
+            // A repeating one comes in once, not a task for every day of it.
+            for key in [event.id, event.series].compactMap({ $0 }) where done.insert(key).inserted { imported.append(key) }
             added = true
         }
-        if added { defaults.set(Array(imported.suffix(500)), forKey: "calendar.imported") }
+        if added {
+            if imported.count > 500 {
+                let current = Set(raw.map(\.id) + raw.compactMap(\.series))
+                let spare = imported.count - 500
+                var dropped = 0
+                imported.removeAll { key in
+                    guard dropped < spare, !current.contains(key) else { return false }
+                    dropped += 1
+                    return true
+                }
+            }
+            defaults.set(imported, forKey: "calendar.imported")
+        }
     }
 
     // MARK: - free time

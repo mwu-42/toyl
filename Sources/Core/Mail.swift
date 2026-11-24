@@ -215,13 +215,15 @@ enum MailPull {
         let earliest = now.addingTimeInterval(-Double(max(settings.days, 1)) * 86400)
         let since = max(settings.lastPull?.addingTimeInterval(-3600) ?? earliest, earliest)
         var messages: [MailMessage] = []
+        // Already judged, or already a task: not fetched again.
+        let known = Set(settings.seen).union(snap.tasks.compactMap { $0.email.map { $0.account + ":" + $0.id } })
         if settings.gmail {
             if !GoogleAuth.isConnected {
                 outcome.errors.append("gmail: connect google first")
             } else if !GoogleAuth.allows(Gmail.scope) {
                 outcome.errors.append("gmail: connect google again to allow gmail")
             } else {
-                do { messages += try await Gmail.recent(since: since); outcome.read = true } catch { outcome.errors.append("gmail: \(error)") }
+                do { messages += try await Gmail.recent(since: since, skip: known); outcome.read = true } catch { outcome.errors.append("gmail: \(error)") }
             }
         }
         if settings.outlook {
@@ -263,13 +265,21 @@ enum Gmail {
     static let scope = "https://www.googleapis.com/auth/gmail.readonly"
     static var base: String { GoogleAuth.env("TOYL_GMAIL_API") ?? "https://gmail.googleapis.com/gmail/v1" }
 
-    /// The inbox since then, less promotions, social and forums.
-    static func recent(since: Date) async throws -> [MailMessage] {
+    /// The inbox since then, less promotions, social and forums: every page of it (up to 300),
+    /// so a weekend away isn't cut to the newest few. Those in `skip` ("gmail:id") aren't fetched.
+    static func recent(since: Date, skip: Set<String> = []) async throws -> [MailMessage] {
         let q = "in:inbox after:\(Int(since.timeIntervalSince1970)) -category:promotions -category:social -category:forums"
-        let list = try await get("users/me/messages", ["q": q, "maxResults": "40"])
-        let ids = (list["messages"] as? [[String: Any]] ?? []).compactMap { $0["id"] as? String }
+        var ids: [String] = []
+        var page: String?
+        repeat {
+            var query = ["q": q, "maxResults": "100"]
+            if let page { query["pageToken"] = page }
+            let list = try await get("users/me/messages", query)
+            ids += (list["messages"] as? [[String: Any]] ?? []).compactMap { $0["id"] as? String }
+            page = list["nextPageToken"] as? String
+        } while page != nil && ids.count < 300
         var found: [MailMessage] = []
-        for id in ids {
+        for id in ids where !skip.contains("gmail:" + id) {
             let m = try await get("users/me/messages/\(id)", ["format": "metadata"],
                                   repeated: ["metadataHeaders": ["From", "Subject", "List-Unsubscribe", "List-Id", "Precedence"]])
             let headers = Dictionary(((m["payload"] as? [String: Any])?["headers"] as? [[String: Any]] ?? []).compactMap { h -> (String, String)? in
@@ -420,21 +430,29 @@ enum Outlook {
     static func recent(since: Date) async throws -> [MailMessage] {
         var components = URLComponents(string: api + "/me/mailFolders/inbox/messages")!
         components.queryItems = [
-            URLQueryItem(name: "$top", value: "40"),
+            URLQueryItem(name: "$top", value: "100"),
             URLQueryItem(name: "$orderby", value: "receivedDateTime desc"),
             URLQueryItem(name: "$filter", value: "receivedDateTime ge " + GoogleTime.utc(since)),
             URLQueryItem(name: "$select", value: "id,subject,from,receivedDateTime,bodyPreview,importance,inferenceClassification,webLink"),
         ]
-        var request = URLRequest(url: components.url!)
-        request.setValue("Bearer " + (try await accessToken()), forHTTPHeaderField: "Authorization")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard status == 200 else {
-            let message = ((json["error"] as? [String: Any])?["message"] as? String) ?? "http \(status)"
-            throw GoogleAuth.Failure.said(message.lowercased())
+        // Every page of it (up to 300), so a weekend away isn't cut to the newest few.
+        var rows: [[String: Any]] = []
+        var next: URL? = components.url
+        let token = try await accessToken()
+        while let url = next, rows.count < 300 {
+            var request = URLRequest(url: url)
+            request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard status == 200 else {
+                let message = ((json["error"] as? [String: Any])?["message"] as? String) ?? "http \(status)"
+                throw GoogleAuth.Failure.said(message.lowercased())
+            }
+            rows += json["value"] as? [[String: Any]] ?? []
+            next = (json["@odata.nextLink"] as? String).flatMap(URL.init(string:))
         }
-        return (json["value"] as? [[String: Any]] ?? []).compactMap { m in
+        return rows.compactMap { m in
             guard let id = m["id"] as? String else { return nil }
             let sender = (m["from"] as? [String: Any])?["emailAddress"] as? [String: Any]
             let address = sender?["address"] as? String ?? ""

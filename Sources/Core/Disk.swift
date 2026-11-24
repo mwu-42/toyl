@@ -28,6 +28,9 @@ final class Disk: @unchecked Sendable {
         var changed = false
         var missing = false
         var trouble: String?
+        /// The file's signature straight after this save, taken under the lock (so a write by
+        /// Oyl a moment later still reads as a change).
+        var signature: [Int] = []
     }
 
     /// Changes whenever the file does, whether it's replaced or written over.
@@ -41,7 +44,8 @@ final class Disk: @unchecked Sendable {
 
     /// The file as it is (no lock: it's only ever replaced whole).
     func read() -> Outcome {
-        guard let raw = try? Data(contentsOf: file) else { return Outcome(missing: true) }
+        guard FileManager.default.fileExists(atPath: file.path) else { return Outcome(missing: true) }
+        guard let raw = try? Data(contentsOf: file) else { return Outcome(trouble: "toyl.json is there but can't be read") }
         guard let doc = Doc(data: raw) else { return Outcome(trouble: Self.unreadable) }
         return Outcome(doc: doc, rev: Self.rev(raw))
     }
@@ -58,9 +62,19 @@ final class Disk: @unchecked Sendable {
         let lock = Darwin.open(folder.path, O_RDONLY)
         guard lock >= 0 else { return Outcome(trouble: "can't open toyl's folder") }
         defer { close(lock) }    // which unlocks it
-        flock(lock, LOCK_EX)
+        while flock(lock, LOCK_EX) != 0 {
+            guard errno == EINTR else { return Outcome(trouble: "can't lock toyl's folder") }
+        }
 
-        let raw = try? Data(contentsOf: file)
+        // Only a file that isn't there at all starts a new list: one that can't be read just now
+        // (busy, no permission) is never written over.
+        let raw: Data?
+        if FileManager.default.fileExists(atPath: file.path) {
+            guard let read = try? Data(contentsOf: file) else { return Outcome(trouble: "toyl.json is there but can't be read") }
+            raw = read
+        } else {
+            raw = nil
+        }
         let current: Doc
         if let raw {
             guard let doc = Doc(data: raw) else { return Outcome(trouble: Self.unreadable) }
@@ -86,7 +100,7 @@ final class Disk: @unchecked Sendable {
             changed = !doc.isSame(as: current)
         }
         if mirrors { Mirror.refresh(doc, rev: rev, folder: folder, force: ingested) }
-        return Outcome(doc: doc, rev: rev, before: current, changed: changed)
+        return Outcome(doc: doc, rev: rev, before: current, changed: changed, signature: signature())
     }
 
     /// Takes in any edit made to toyl.md, and writes it again if it's behind (after Oyl's

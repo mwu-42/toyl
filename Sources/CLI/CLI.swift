@@ -118,7 +118,7 @@ enum CLI {
         if let list = args.value("list") { text += " in:\"\(list)\"" }
         if args.has("done") { text += " is:all" }
         let place: Place = args.value("list").flatMap { Ops.list($0, in: snap) }.map { .list($0.id) } ?? .search
-        try show(place: place, args: Args(text.isEmpty ? [] : [text] + (args.has("json") ? ["--json"] : [])))
+        try show(place: place, args: Args((text.isEmpty ? [] : [text]) + (args.has("json") ? ["--json"] : [])))
     }
 
     private static func showTask(_ args: Args) throws {

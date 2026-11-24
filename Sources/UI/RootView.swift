@@ -361,8 +361,10 @@ struct SidebarRow: View {
                     .truncationMode(.tail)
             }
             Spacer(minLength: 4)
-            if place == .timers, !model.timers.timers.isEmpty {
-                Ring(fraction: model.timers.timers.first.map { $0.kind == .countdown ? $0.fractionLeft(at: model.timers.now) : 1 } ?? 0, size: 12, line: 1.6)
+            if place == .timers, let first = model.timers.timers.first {
+                TimelineView(.periodic(from: .now, by: first.isRunning ? 1 : 60)) { context in
+                    Ring(fraction: first.kind == .countdown ? first.fractionLeft(at: context.date) : 1, size: 12, line: 1.6)
+                }
             } else if shown > 0 {
                 Text("\(shown)").font(Theme.font(13.5)).foregroundStyle(Theme.faint)
                     .contentTransition(.numericText())
@@ -416,8 +418,8 @@ struct SidebarRow: View {
         if let payload, kind == Drag.kind(payload) { return true }
         guard kind == "tasks" || kind == "text" else { return false }
         switch place {
-        case .list, .inbox, .ideas, .today, .inProgress: return true
-        case .tag: return kind == "tasks"
+        case .list, .inbox, .ideas: return true
+        case .today, .inProgress, .tag: return kind == "tasks"
         default: return false
         }
     }

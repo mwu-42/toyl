@@ -58,6 +58,10 @@ struct GEvent: Identifiable, Equatable {
     /// The task it's for, if toyl put it there (kept out of sight, in its private properties).
     var taskId: String?
     var recurring: Bool
+    /// The repeating event it's one of (each day of a daily one has its own id).
+    var series: String?
+    /// Made by the owner (not an invitation, nor someone else's on a shared calendar).
+    var mine: Bool
     /// The event on calendar.google.com.
     var link: String?
 
@@ -85,7 +89,10 @@ struct GEvent: Identifiable, Equatable {
         status = e["status"] as? String ?? "confirmed"
         updated = GoogleTime.date(e["updated"])
         taskId = ((e["extendedProperties"] as? [String: Any])?["private"] as? [String: Any])?["toylTask"] as? String
-        recurring = e["recurringEventId"] != nil
+        series = e["recurringEventId"] as? String
+        recurring = series != nil
+        let creator = e["creator"] as? [String: Any], organizer = e["organizer"] as? [String: Any]
+        mine = creator?["self"] as? Bool == true || organizer?["self"] as? Bool == true || (creator == nil && organizer == nil)
         link = e["htmlLink"] as? String
     }
 }
@@ -258,7 +265,7 @@ enum GoogleAuth {
             <body style="font: 20px 'Times New Roman', serif; background: #fbfbfa; color: #1d1d1c; margin: 18vh auto; max-width: 30em">
             <p>toyl has its answer from google.</p><p style="color: #737370">you can close this tab.</p></body>
             """
-        let answer = await Task.detached { loopback.answer(within: 300, page: page) }.value
+        let answer = await Task.detached { loopback.answer(within: 300, page: page, state: state) }.value
         guard let answer else { throw Failure.said("no answer from google, so toyl stopped waiting (five minutes)") }
         if let error = answer["error"] { throw Failure.denied(error.replacingOccurrences(of: "_", with: " ")) }
         guard answer["state"] == state, let code = answer["code"] else { throw Failure.said("google's answer didn't match what toyl asked") }
@@ -373,7 +380,9 @@ final class Loopback: @unchecked Sendable {
 
     /// The query of the first request that carries Google's answer (a code, or an error),
     /// answered with `page`; nil if none comes in time. Anything else (a favicon) gets a 404.
-    func answer(within seconds: TimeInterval, page: String) -> [String: String]? {
+    /// Only one carrying this sign-in's `state` counts: anything else on the port (another
+    /// program, a stray tab) can't end it.
+    func answer(within seconds: TimeInterval, page: String, state: String? = nil) -> [String: String]? {
         let deadline = Date().addingTimeInterval(seconds)
         while Date() < deadline {
             var waiting = pollfd(fd: socket, events: Int16(POLLIN), revents: 0)
@@ -381,13 +390,16 @@ final class Loopback: @unchecked Sendable {
             let client = accept(socket, nil, nil)
             guard client >= 0 else { continue }
             defer { close(client) }
+            // One that connects and says nothing doesn't hold it up past a few seconds.
+            var wait = timeval(tv_sec: 5, tv_usec: 0)
+            setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &wait, socklen_t(MemoryLayout<timeval>.size))
             var buffer = [UInt8](repeating: 0, count: 16384)
             let count = read(client, &buffer, buffer.count)
             guard count > 0, let request = String(bytes: buffer[0..<count], encoding: .utf8) else { continue }
             let path = request.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
             let items = URLComponents(string: "http://127.0.0.1" + path)?.queryItems ?? []
             let values = Dictionary(items.map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { first, _ in first })
-            guard values["code"] != nil || values["error"] != nil else {
+            guard values["code"] != nil || values["error"] != nil, state == nil || values["state"] == state else {
                 send(client, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
                 continue
             }

@@ -36,6 +36,8 @@ final class AppModel: ObservableObject {
             selection = []
             anchor = nil
             editing = nil
+            hoveredTask = nil
+            showAutosort = false
             if place != .search { filter = "" }
             defaults.set(place.key, forKey: "place")
         }
@@ -110,7 +112,12 @@ final class AppModel: ObservableObject {
     @Published var addingSublist: String?
     /// The task the pointer's over (for swiping it), and the swipe going on, if one is.
     var hoveredTask: String?
-    @Published var swipe: Swipe?
+    /// The swipe going on: kept apart (in `swiping`), so a swipe redraws the rows, not the window.
+    let swiping = Swiping()
+    var swipe: Swipe? {
+        get { swiping.swipe }
+        set { swiping.swipe = newValue }
+    }
     private var swipeTrack: (id: String, dx: CGFloat, dy: CGFloat, sideways: Bool?)?
     private var swallowMomentum = false
     private var swipeWatch: Any?
@@ -170,7 +177,9 @@ final class AppModel: ObservableObject {
         // What's shown follows the list, the timers and the calendar.
         forwarding = [
             store.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() },
-            timers.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() },
+            // Not the timers' every-second tick (that would redraw the whole window each second
+            // while one runs): only a timer ringing. Countdowns tick in their own small views.
+            timers.$ringing.dropFirst().sink { [weak self] _ in self?.objectWillChange.send() },
             calendar.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() },
             mail.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() },
             canvas.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() },
@@ -179,6 +188,34 @@ final class AppModel: ObservableObject {
         // Upcoming and logbook aren't places in the window any more.
         if place == .upcoming || place == .logbook { place = .today }
         phone = PhoneLink(model: self, testing: Self.phoneTesting)
+        startClock()
+    }
+
+    /// The time, to the minute, for what's shown by the day (today, late, the calendar's now
+    /// line). It moves each minute, at midnight and on waking, whether a timer's going or not.
+    @Published private(set) var clock = Date()
+    private var clockTimer: Timer?
+    private var clockWatch: [NSObjectProtocol] = []
+
+    private func startClock() {
+        let seconds = Calendar.current.component(.second, from: Date())
+        let first = Timer(timeInterval: Double(60 - seconds) + 0.2, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.clock = Date()
+                let every = Timer(timeInterval: 60, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.clock = Date() } }
+                every.tolerance = 2
+                RunLoop.main.add(every, forMode: .common)
+                self.clockTimer = every
+            }
+        }
+        RunLoop.main.add(first, forMode: .common)
+        clockTimer = first
+        let refresh: (Notification) -> Void = { [weak self] _ in MainActor.assumeIsolated { self?.clock = Date() } }
+        clockWatch = [
+            NotificationCenter.default.addObserver(forName: .NSCalendarDayChanged, object: nil, queue: .main, using: refresh),
+            NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main, using: refresh),
+        ]
     }
 
     var snap: Snapshot { store.snap }
@@ -209,12 +246,19 @@ final class AppModel: ObservableObject {
         return text.isEmpty ? nil : Query.parse(text, weekStart: snap.weekStart)
     }
 
+    /// What the place shows, grouped. Worked out once for each list, place, filter, sort and
+    /// minute, not on every redraw (and every row that asks).
     var groups: [TaskGroup] {
         let now = Date()
+        let key = "\(store.version)|\(place.key)|\(filter)|\(sortMode(place).rawValue)|\(groupMode(place).rawValue)|\(showDone)|\(Int(now.timeIntervalSince1970 / 60))"
+        if let kept = groupsKept, kept.key == key { return kept.groups }
         let tasks = Views.tasks(for: place, in: snap, query: query, showDone: showDone, now: now)
-        return Views.groups(tasks, place: place, mode: groupMode(place), sort: sortMode(place), snap: snap, now: now,
-                            keepEmpty: place == .anytime && query == nil)
+        let made = Views.groups(tasks, place: place, mode: groupMode(place), sort: sortMode(place), snap: snap, now: now,
+                                keepEmpty: place == .anytime && query == nil)
+        groupsKept = (key, made)
+        return made
     }
+    private var groupsKept: (key: String, groups: [TaskGroup])?
 
     var visible: [TaskModel] { groups.flatMap(\.tasks) }
 
@@ -255,12 +299,24 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// How many a place has, for the sidebar: worked out once for each list and minute.
     func count(_ place: Place) -> Int {
         switch place {
         case .logbook, .timers, .search: return 0
-        default: return Views.count(place, in: snap)
+        default:
+            let stamp = "\(store.version)|\(Int(Date().timeIntervalSince1970 / 60))"
+            if countsStamp != stamp {
+                countsStamp = stamp
+                counts = [:]
+            }
+            if let kept = counts[place.key] { return kept }
+            let counted = Views.count(place, in: snap)
+            counts[place.key] = counted
+            return counted
         }
     }
+    private var counts: [String: Int] = [:]
+    private var countsStamp = ""
 
     var lateCount: Int { snap.tasks.filter { $0.isLate(at: Date()) && $0.due != Day.today() }.count }
 
@@ -354,11 +410,10 @@ final class AppModel: ObservableObject {
     /// a name. Whether the window's wanted for it (a name to type, the calendar's form, the filter).
     @discardableResult
     func perform(_ command: Quick.Command, under group: TaskGroup? = nil, quiet: Bool = false) -> Bool {
-        let back = place
-        defer { if quiet { place = back; renaming = nil } }
         switch command {
         case .list(let name):
-            newList(name.isEmpty ? "new list" : name, rename: name.isEmpty && !quiet)
+            // From the phone (quiet), nothing on the Mac moves: not its place, selection or filter.
+            newList(name.isEmpty ? "new list" : name, rename: name.isEmpty && !quiet, navigate: !quiet)
             if !name.isEmpty || quiet { banner = "new list “\(display(name.isEmpty ? "new list" : name))”" }
             return name.isEmpty && !quiet
         case .project(let name, let listId, let newListName):
@@ -368,7 +423,7 @@ final class AppModel: ObservableObject {
                 store.change("new list") { $0.addList(name: newListName, id: id) }
                 list = id
             }
-            newProject(in: list, name: name.isEmpty ? "new project" : name, rename: name.isEmpty && !quiet)
+            newProject(in: list, name: name.isEmpty ? "new project" : name, rename: name.isEmpty && !quiet, navigate: !quiet)
             if !name.isEmpty || quiet { banner = "new project “\(display(name.isEmpty ? "new project" : name))”" }
             return name.isEmpty && !quiet
         case .group(let name):
@@ -418,11 +473,20 @@ final class AppModel: ObservableObject {
         return (list, guess.confidence)
     }
 
-    func autosortInbox() -> [Actions.Suggestion] { Actions.autosort(snap) }
+    /// Autosort's guesses for the inbox: worked out once for each version of the list (it learns
+    /// from every task, so not on every redraw).
+    func autosortInbox() -> [Actions.Suggestion] {
+        if let kept = guessesKept, kept.version == store.version { return kept.guesses }
+        let made = Actions.autosort(snap)
+        guessesKept = (store.version, made)
+        return made
+    }
+    private var guessesKept: (version: Int, guesses: [Actions.Suggestion])?
 
     func applyAutosort(_ suggestions: [Actions.Suggestion]) {
         store.change(suggestions.count == 1 ? "file" : "autosort") { doc in
-            for s in suggestions {
+            // Only what's still open in the inbox: one filed by hand while autosort thought stays put.
+            for s in suggestions where doc.task(s.task.id).map({ $0.listId == ListModel.inbox && !$0.done }) ?? false {
                 var p = TaskPatch()
                 if let list = s.list { p.listId = list.id }
                 p.addTags = s.tags
@@ -468,7 +532,13 @@ final class AppModel: ObservableObject {
                 if let list = await OnDevice.list(for: task.title, among: lists, examples: examples) { moves.append((task.id, list)) }
             }
             if !moves.isEmpty {
-                store.change("autosort") { doc in for (task, list) in moves { var p = TaskPatch(); p.listId = list; doc.updateTask(task, p) } }
+                store.change("autosort") { doc in
+                    for (task, list) in moves where doc.task(task).map({ $0.listId == ListModel.inbox && !$0.done }) ?? false {
+                        var p = TaskPatch()
+                        p.listId = list
+                        doc.updateTask(task, p)
+                    }
+                }
             }
             banner = moves.isEmpty ? "apple intelligence wasn't sure about any of them" : "filed \(moves.count) with apple intelligence"
         }
@@ -664,9 +734,10 @@ final class AppModel: ObservableObject {
     // MARK: - lists, groups, filters
 
     @discardableResult
-    func newList(_ name: String = "new list", group: String? = nil, rename: Bool = true) -> String {
+    func newList(_ name: String = "new list", group: String? = nil, rename: Bool = true, navigate: Bool = true) -> String {
         let id = UID.make()
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { store.change("new list") { $0.addList(name: name, group: group, id: id) } }
+        guard navigate else { return id }
         place = .list(id)
         if rename { renaming = "list:" + id }
         return id
@@ -684,9 +755,10 @@ final class AppModel: ObservableObject {
 
     /// A new project in a list, its name ready to type.
     @discardableResult
-    func newProject(in list: String, name: String = "new project", rename: Bool = true) -> String {
+    func newProject(in list: String, name: String = "new project", rename: Bool = true, navigate: Bool = true) -> String {
         let id = UID.make()
         withAnimation(.snappy(duration: 0.25)) { store.change("new project") { $0.addProject(to: list, name: name, id: id) } }
+        guard navigate else { return id }
         if place != .list(list), list != ListModel.inbox || place != .inbox { place = list == ListModel.inbox ? .inbox : .list(list) }
         setGroup(.project, for: place)
         if rename { renaming = "project:" + id }
@@ -813,6 +885,12 @@ final class AppModel: ObservableObject {
         } else {
             freeze = []
         }
+        // Let go where it already was (a tiny drag): nothing to do, and the sort isn't changed.
+        if moving.count == 1, let only = moving.first, let at = shown.firstIndex(where: { $0.id == only.id }),
+           group.listId == nil || only.listId == group.listId, !byProject || only.project == group.projectId {
+            let following = shown.dropFirst(at + 1).first?.id
+            if before == following || (before == nil && group.tasks.last?.id == only.id) { return }
+        }
         var moves: [(id: String, list: String, section: String, before: String?, project: String??)] = []
         for task in moving {
             let list = group.listId ?? task.listId
@@ -934,7 +1012,7 @@ final class AppModel: ObservableObject {
 
     // MARK: - the calendar panel
 
-    var shownDay: String { calendarDay ?? Day.today(timers.now) }
+    var shownDay: String { calendarDay ?? Day.today(clock) }
 
     /// Moves the calendar on or back: a day, a week or a month, as it's showing.
     func stepDay(_ steps: Int) {
@@ -1026,7 +1104,8 @@ final class AppModel: ObservableObject {
     /// Tasks dropped on the panel's hours: due that day at that time (and their events follow, if
     /// they're on the calendar). Text dropped there becomes a task at that time.
     func schedule(_ items: [String], day: String, time: String?, keepTime: Bool = false) {
-        for item in items where !item.hasPrefix("toyl-panel:") && !item.hasPrefix("toyl-event:") {
+        // Lists, projects, sublist items and the rest dragged here aren't tasks to schedule.
+        for item in items where !item.hasPrefix("toyl-") {
             if item.hasPrefix("toyl:") {
                 let ids = item.dropFirst(5).split(separator: ",").map(String.init).filter { snap.task($0) != nil }
                 guard !ids.isEmpty else { continue }
@@ -1172,7 +1251,13 @@ final class AppModel: ObservableObject {
         }
         if event.phase.contains(.began) || event.phase.contains(.mayBegin) {
             swallowMomentum = false
-            if let id = hoveredTask, editing == nil { swipeTrack = (id, 0, 0, nil) } else { swipeTrack = nil }
+            // Only a task that's really there under the pointer (not one just checked off, or from
+            // the place before, whose row went without saying the pointer left it).
+            if let id = hoveredTask, editing == nil, !completing.contains(id), visible.contains(where: { $0.id == id }) {
+                swipeTrack = (id, 0, 0, nil)
+            } else {
+                swipeTrack = nil
+            }
             return false
         }
         if event.phase.contains(.changed) {
@@ -1289,4 +1374,10 @@ final class AppModel: ObservableObject {
         }
         calendarForm = calendar.form(for: task)
     }
+}
+
+/// The swipe going on over a task, on its own so only the task rows watch it.
+@MainActor
+final class Swiping: ObservableObject {
+    @Published var swipe: AppModel.Swipe?
 }

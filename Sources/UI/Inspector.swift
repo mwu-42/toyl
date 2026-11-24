@@ -62,7 +62,7 @@ struct TaskDetail: View {
     }
 
     var body: some View {
-        let now = model.timers.now
+        let now = model.clock
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .top, spacing: 10) {
@@ -87,7 +87,10 @@ struct TaskDetail: View {
                 sublist
                 notesEditor
                 Hairline()
-                timer(now: now)
+                // Its countdown ticks here alone, not the whole description.
+                TimelineView(.periodic(from: .now, by: model.timers.timer(for: task.id)?.isRunning == true ? 1 : 60)) { context in
+                    timer(now: context.date)
+                }
                 calendar
                 Hairline()
                 footer
@@ -571,7 +574,7 @@ struct DayGlance: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        let now = model.timers.now
+        let now = model.clock
         let today = Day.today(now)
         let snap = model.snap
         let open = snap.tasks.filter { !$0.done }

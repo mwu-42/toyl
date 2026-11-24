@@ -314,6 +314,8 @@ final class PhoneServer: @unchecked Sendable {
 
     private func listen(on port: UInt16, tries: Int) {
         let parameters = NWParameters.tcp
+        // Its own closed connections (and a listener just stopped) don't keep the port from it.
+        parameters.allowLocalEndpointReuse = true
         guard let number = NWEndpoint.Port(rawValue: port) else {
             report(.failed("Couldn't listen"))
             return

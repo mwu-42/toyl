@@ -31,9 +31,15 @@ extension View {
     /// Draggable as `payload`, the window told what's being dragged (so what it passes over can
     /// show where it'd go: a line between, or a place lit up to drop into).
     func toylDrag<Preview: View>(_ model: AppModel, _ payload: String, @ViewBuilder preview: @escaping () -> Preview) -> some View {
+        toylDrag(model, { payload }, preview: preview)
+    }
+
+    /// The same, with what's dragged worked out only when a drag starts (a selection's ids, say).
+    func toylDrag<Preview: View>(_ model: AppModel, _ payload: @escaping () -> String, @ViewBuilder preview: @escaping () -> Preview) -> some View {
         onDrag {
-            model.dragging = payload
-            return NSItemProvider(object: payload as NSString)
+            let made = payload()
+            model.dragging = made
+            return NSItemProvider(object: made as NSString)
         } preview: {
             preview()
         }
@@ -91,10 +97,16 @@ private struct ColumnDrop: ViewModifier {
 
         /// Not one it takes: it steps aside, so what's around it can take it (a task over a
         /// sublist item goes to the task's row).
-        func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [.plainText]) && accepts(model.dragging ?? "") }
+        /// What's being dragged now: from the drag itself (so one cancelled earlier, or dropped
+        /// somewhere else, can't be mistaken for it), else what toyl last started dragging.
+        private var dragging: String {
+            NSPasteboard(name: .drag).string(forType: .string) ?? model.dragging ?? ""
+        }
+
+        func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [.plainText]) && accepts(dragging) }
 
         func dropUpdated(info: DropInfo) -> DropProposal? {
-            let dragging = model.dragging ?? ""
+            let dragging = self.dragging
             guard accepts(dragging) else {
                 spot = nil
                 lit?.wrappedValue = false

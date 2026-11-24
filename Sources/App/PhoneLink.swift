@@ -38,6 +38,8 @@ final class PhoneLink: ObservableObject {
     @Published private(set) var status: PhoneServer.Status?
     @Published private(set) var tailnetName: String?
     private(set) var port: UInt16
+    /// The port it's meant to be on (the one the phone's page was saved with).
+    private var preferredPort: UInt16 = 0
 
     static let defaultPort: UInt16 = 47650
     static let cookie = "toyl"
@@ -59,6 +61,7 @@ final class PhoneLink: ObservableObject {
         self.testing = testing
         isOn = testing != nil || defaults.bool(forKey: "phone.on")
         port = testing?.port ?? (defaults.object(forKey: "phone.port") as? Int).map { UInt16(clamping: $0) } ?? Self.defaultPort
+        preferredPort = port
         devices = testing != nil ? [] : defaults.data(forKey: "phone.devices").flatMap { try? JSONDecoder().decode([Device].self, from: $0) } ?? []
         if isOn { start() }
         if let testing { pairing = Pairing(code: testing.code, until: Date().addingTimeInterval(3600)) }
@@ -137,10 +140,9 @@ final class PhoneLink: ObservableObject {
         }, status: { [weak self] status in
             guard let self else { return }
             self.status = status
-            if case let .listening(port) = status, port != self.port {
-                self.port = port
-                self.save()
-            }
+            // Shown as it is, but the usual port is what's kept: a stand-in (the usual one busy
+            // for a moment) isn't saved, so the home-screen page finds the Mac there next time.
+            if case let .listening(port) = status, port != self.port { self.port = port }
         })
         self.server = server
         server.start(port: port)
@@ -162,7 +164,7 @@ final class PhoneLink: ObservableObject {
         saved = Date()
         guard testing == nil else { return }
         defaults.set(isOn, forKey: "phone.on")
-        defaults.set(Int(port), forKey: "phone.port")
+        if port == preferredPort { defaults.set(Int(port), forKey: "phone.port") }
         defaults.set(try? JSONEncoder().encode(devices), forKey: "phone.devices")
     }
 

@@ -74,12 +74,21 @@ enum Integrations {
             .first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 
+    /// Read again only when the file's changed (it's big, and settings ask each time they're drawn).
     static var claudeCodeConnected: Bool {
-        guard let data = try? Data(contentsOf: home.appendingPathComponent(".claude.json")),
-              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let servers = json["mcpServers"] as? [String: Any] else { return false }
-        return servers["toyl"] != nil
+        let file = home.appendingPathComponent(".claude.json")
+        let changed = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date
+        if let kept = claudeCodeKept, kept.changed == changed { return kept.connected }
+        var connected = false
+        if let data = try? Data(contentsOf: file),
+           let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+           let servers = json["mcpServers"] as? [String: Any] {
+            connected = servers["toyl"] != nil
+        }
+        claudeCodeKept = (changed, connected)
+        return connected
     }
+    nonisolated(unsafe) private static var claudeCodeKept: (changed: Date?, connected: Bool)?
 
     /// `claude mcp add --scope user toyl -- <toyl> mcp`: toyl's tools in every Claude Code session.
     static func connectClaudeCode() throws {

@@ -7,7 +7,9 @@ import SwiftUI
 /// save shows up here within a moment. Changes can be undone (⌘Z) and redone.
 @MainActor
 final class Store: ObservableObject {
-    @Published private(set) var snap = Snapshot()
+    @Published private(set) var snap = Snapshot() { didSet { version &+= 1 } }
+    /// Goes up each time the list changes, so what's worked out from it can be kept till then.
+    private(set) var version = 0
     /// What's wrong, if the list can't be read or a change couldn't be saved.
     @Published private(set) var trouble: String?
     let undoManager = UndoManager()
@@ -69,7 +71,7 @@ final class Store: ObservableObject {
         }
         trouble = nil
         if pending == 0, let saved = outcome.doc {
-            seen = disk.signature()
+            seen = outcome.signature
             if !saved.isSame(as: doc) {
                 doc = saved
                 snap = Snapshot(doc)
@@ -88,22 +90,81 @@ final class Store: ObservableObject {
         undoManager.setActionName(name)
     }
 
+    /// Only what the change itself changed goes back: the fields of a task it touched (not the
+    /// whole task, so time a timer added since, or a calendar link, stays), and the lists, groups,
+    /// filters and timers it touched, by id (so one added elsewhere since stays).
     private static func inverse(from after: Doc, to before: Doc) -> (inout Doc) -> Void {
         let a = after.taskEntries, b = before.taskEntries
-        var tasks: [String: [String: Any]?] = [:]
+        var whole: [String: [String: Any]?] = [:]
+        var fields: [String: [String: Any?]] = [:]
         for id in Set(a.keys).union(b.keys) {
-            if let x = a[id], let y = b[id], NSDictionary(dictionary: x).isEqual(to: y) { continue }
-            tasks.updateValue(b[id], forKey: id)
+            let x = a[id], y = b[id]
+            if let x, let y {
+                if NSDictionary(dictionary: x).isEqual(to: y) { continue }
+                var changed: [String: Any?] = [:]
+                for key in Set(x.keys).union(y.keys) where !same(x[key], y[key]) { changed.updateValue(y[key], forKey: key) }
+                fields[id] = changed
+            } else {
+                whole.updateValue(y, forKey: id)
+            }
         }
-        var parts: [String: Any?] = [:]
-        for key in ["lists", "groups", "filters"] {
+        var arrays: [(key: String, after: [Any], before: [Any])] = []
+        for key in ["lists", "groups", "filters", "timers"] {
             let x = after.json[key] as? [Any] ?? [], y = before.json[key] as? [Any] ?? []
-            if !NSArray(array: x).isEqual(to: y) { parts.updateValue(before.json[key], forKey: key) }
+            if !NSArray(array: x).isEqual(to: y) { arrays.append((key, x, y)) }
         }
         return { doc in
-            for (id, entry) in tasks { doc[task: id] = entry }
-            for (key, value) in parts { doc.json[key] = value }
+            for (id, entry) in whole { doc[task: id] = entry }
+            for (id, changed) in fields {
+                guard var entry = doc[task: id] else { continue }
+                for (key, value) in changed { entry[key] = value }
+                doc[task: id] = entry
+            }
+            for part in arrays { doc.json[part.key] = restore(doc.json[part.key] as? [Any] ?? [], after: part.after, before: part.before) }
         }
+    }
+
+    private static func same(_ x: Any?, _ y: Any?) -> Bool {
+        switch (x, y) {
+        case (nil, nil): return true
+        case let (x?, y?): return (x as AnyObject).isEqual(y as AnyObject)
+        default: return false
+        }
+    }
+
+    private static func entryId(_ entry: Any) -> String? { (entry as? [String: Any])?["id"] as? String }
+
+    /// An array of entries with ids as the change found it, on the array as it is now: entries
+    /// the change added go, ones it removed come back, ones it changed are put back, and if it
+    /// moved them, they go back in their old order. Others are left as they are.
+    private static func restore(_ current: [Any], after: [Any], before: [Any]) -> [Any] {
+        var out = current
+        let afterById = Dictionary(after.compactMap { e in entryId(e).map { ($0, e) } }, uniquingKeysWith: { a, _ in a })
+        let beforeIds = before.compactMap(entryId)
+        let beforeById = Dictionary(before.compactMap { e in entryId(e).map { ($0, e) } }, uniquingKeysWith: { a, _ in a })
+        for id in Set(afterById.keys).union(beforeById.keys) {
+            let x = afterById[id], y = beforeById[id]
+            if let x, let y, same(x, y) { continue }
+            if let y {
+                if let at = out.firstIndex(where: { entryId($0) == id }) {
+                    out[at] = y
+                } else {
+                    let at = beforeIds.firstIndex(of: id) ?? out.count
+                    out.insert(y, at: min(at, out.count))
+                }
+            } else {
+                out.removeAll { entryId($0) == id }
+            }
+        }
+        // Moved: the ones it knew go back in their old order, in the places they hold now.
+        let common = Set(beforeIds).intersection(afterById.keys)
+        if beforeIds.filter(common.contains) != after.compactMap(entryId).filter(common.contains) {
+            let rank = Dictionary(beforeIds.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
+            let slots = out.indices.filter { entryId(out[$0]).map { rank[$0] != nil } ?? false }
+            let ordered = slots.map { out[$0] }.sorted { (rank[entryId($0) ?? ""] ?? 0) < (rank[entryId($1) ?? ""] ?? 0) }
+            for (slot, entry) in zip(slots, ordered) { out[slot] = entry }
+        }
+        return out
     }
 
     // MARK: - the usual changes

@@ -68,7 +68,6 @@ enum Mirror {
     static func meta(_ task: TaskModel) -> String {
         var parts: [String] = []
         if let due = task.due { parts.append("due " + due + (task.time.map { " " + $0 } ?? "")) }
-        if let target = task.target { parts.append("by " + target) }
         if let repeats = task.repeats { parts.append(repeats.phrase) }
         if let duration = task.duration { parts.append("~" + Format.minutes(duration)) }
         if task.pinned { parts.append("!") }
@@ -91,6 +90,8 @@ enum Mirror {
         }
         let text = render(doc)
         guard (try? text.write(to: file, atomically: true, encoding: .utf8)) != nil else { return }
+        // What was written, to tell later which lines were edited (only those are taken in).
+        try? text.write(to: folder.appendingPathComponent(".toyl.md.base"), atomically: true, encoding: .utf8)
         writeStamp(folder, hash: Disk.hash(text), rev: rev)
     }
 
@@ -118,11 +119,65 @@ enum Mirror {
     static func ingest(into doc: inout Doc, folder: URL, now: Date = Date()) -> Bool {
         guard isEdited(folder: folder),
               let text = try? String(contentsOf: folder.appendingPathComponent("toyl.md"), encoding: .utf8) else { return false }
-        return apply(text, to: &doc, now: now)
+        let base = try? String(contentsOf: folder.appendingPathComponent(".toyl.md.base"), encoding: .utf8)
+        return apply(text, to: &doc, base: base, now: now)
     }
 
-    static func apply(_ text: String, to doc: inout Doc, now: Date = Date()) -> Bool {
+    /// Each line of a toyl.md with where it sits (its list and section headings, or its task),
+    /// so a line can be told apart from the same line elsewhere; and each task's notes.
+    private static func lines(of text: String) -> (keys: Set<String>, notes: [String: String]) {
+        var keys = Set<String>()
+        var notes: [String: [String]] = [:]
+        var h2 = "", h3 = ""
+        var last: String?
+        for raw in text.components(separatedBy: .newlines) {
+            let key = lineKey(raw, h2: &h2, h3: &h3, last: &last, notes: &notes)
+            if let key { keys.insert(key) }
+        }
+        return (keys, notes.mapValues { $0.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) })
+    }
+
+    /// A line's key (see `lines`), keeping track of the headings and the task it's under.
+    private static func lineKey(_ raw: String, h2: inout String, h3: inout String, last: inout String?, notes: inout [String: [String]]) -> String? {
+        if match(heading2, raw) != nil {
+            h2 = raw
+            h3 = ""
+            last = nil
+            return "h2|" + raw
+        }
+        if match(heading3, raw) != nil {
+            h3 = raw
+            last = nil
+            return "h3|" + h2 + "|" + raw
+        }
+        if let m = match(taskLine, raw) {
+            if (m[0] ?? "").isEmpty {
+                last = m[3] == "t" ? m[4] : nil
+                return "t|" + h2 + "|" + h3 + "|" + raw
+            }
+            return "s|" + (last ?? "") + "|" + raw
+        }
+        if let m = match(noteLine, raw), let last {
+            notes[last, default: []].append(m[0] ?? "")
+            return nil
+        }
+        if !raw.trimmingCharacters(in: .whitespaces).isEmpty { last = nil }
+        return nil
+    }
+
+    /// Takes in toyl.md. With `base` (what toyl last wrote), only the lines changed since are
+    /// taken in: a line as it was written says nothing new, so it can't undo what Oyl or an agent
+    /// changed in the list meanwhile (a task Oyl checked off stays checked off).
+    static func apply(_ text: String, to doc: inout Doc, base: String? = nil, now: Date = Date()) -> Bool {
         let original = doc
+        let written = base.map(lines(of:))
+        var h2 = "", h3 = "", lastKeyed: String?, keyNotes: [String: [String]] = [:]
+        /// Whether this line is just as toyl wrote it.
+        func unchanged(_ raw: String) -> Bool {
+            let key = lineKey(raw, h2: &h2, h3: &h3, last: &lastKeyed, notes: &keyNotes)
+            guard let written, let key else { return false }
+            return written.keys.contains(key)
+        }
         var snap = Snapshot(doc)
         var listId: String?
         var sectionId: String?
@@ -131,12 +186,13 @@ enum Mirror {
         var subtasks: [String: [Subtask]] = [:]
 
         for raw in text.components(separatedBy: .newlines) {
+            let same = unchanged(raw)
             if let m = match(heading2, raw) {
                 let name = m[0] ?? "", id = m[1]
                 lastTask = nil
                 if let id, let list = snap.list(id) {
                     listId = id
-                    if !list.isSpecial, !name.isEmpty, name != list.name { doc.updateList(id, name: name) }
+                    if !same, !list.isSpecial, !name.isEmpty, name != list.name { doc.updateList(id, name: name) }
                 } else if !name.isEmpty, name.lowercased() != "toyl" {
                     listId = doc.list(named: name)?.id ?? doc.addList(name: name, now: now)
                     snap = Snapshot(doc)
@@ -151,7 +207,7 @@ enum Mirror {
                 lastTask = nil
                 if let id, let section = list.sections.first(where: { $0.id == id }) {
                     sectionId = id
-                    if !name.isEmpty, name != section.name { doc.renameSection(id, in: current, to: name) }
+                    if !same, !name.isEmpty, name != section.name { doc.renameSection(id, in: current, to: name) }
                 } else if !name.isEmpty {
                     if let same = list.sections.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
                         sectionId = same.id
@@ -173,7 +229,8 @@ enum Mirror {
                             lastTask = nil
                             continue
                         }
-                        doc.updateTask(id, patch(for: task, body: body, ticked: ticked, list: listId, section: sectionId, weekStart: doc.weekStart, now: now), now: now)
+                        let p = same ? TaskPatch() : patch(for: task, body: body, ticked: ticked, list: listId, section: sectionId, weekStart: doc.weekStart, now: now)
+                        if !p.isEmpty { doc.updateTask(id, p, now: now) }
                         lastTask = id
                         subtasks[id] = subtasks[id] ?? task.subtasks
                     } else if id == nil, box != "-", !body.isEmpty {
@@ -190,7 +247,9 @@ enum Mirror {
                         lastTask = nil
                     }
                 } else if let parent = lastTask, var list = subtasks[parent] {
-                    if kind == "s", let id, let index = list.firstIndex(where: { $0.id == id }) {
+                    if same {
+                        // As written: nothing to take in.
+                    } else if kind == "s", let id, let index = list.firstIndex(where: { $0.id == id }) {
                         if box == "-" {
                             list.remove(at: index)
                         } else {
@@ -219,6 +278,8 @@ enum Mirror {
         }
         for (id, lines) in notes where !lines.isEmpty {
             let text = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            // Notes as they were written aren't an edit.
+            if let written, written.notes[id] == text { continue }
             guard let task = doc.task(id), task.notes.trimmingCharacters(in: .whitespacesAndNewlines) != text else { continue }
             var p = TaskPatch()
             p.notes = text
@@ -245,7 +306,6 @@ enum Mirror {
                 title = String(body[..<split.lowerBound])
                 if q.due != task.due { p.due = .some(q.due) }
                 if q.time != task.time { p.time = .some(q.time) }
-                if q.target != task.target { p.target = .some(q.target) }
                 if q.repeats != task.repeats { p.repeats = .some(q.repeats) }
                 if q.duration != task.duration { p.duration = .some(q.duration) }
                 if q.pinned != task.pinned { p.pinned = q.pinned }

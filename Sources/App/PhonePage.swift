@@ -275,10 +275,17 @@ enum PhonePage {
       sending = true;
       try {
         while (queue.length) {
-          const done = await api("/api/do", queue[0]);
+          try {
+            const done = await api("/api/do", queue[0]);
+            show(done.state);
+          } catch (error) {
+            // The mac said no to this one (it isn't something it can add): let it go and say why,
+            // rather than holding up everything kept after it. Not reachable: try again later.
+            if (!error.said) throw error;
+            say(error.message);
+          }
           queue.shift();
           keep("toyl.queue", queue);
-          show(done.state);
         }
         say("sent what was kept");
       } catch (e) {} finally { sending = false; }

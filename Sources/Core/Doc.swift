@@ -51,6 +51,7 @@ struct TaskPatch {
     var duration: Int??
     var subtasks: [Subtask]?
     var event: EventLink??
+    var canvas: CanvasLink?
     /// The project it's part of (nil: none). Moving it to another list takes it out of its project.
     var project: String??
     var spentDelta: Int?
@@ -61,6 +62,14 @@ struct TaskPatch {
     var nextId = UID.make()
 
     init() {}
+
+    /// Says nothing to change.
+    var isEmpty: Bool {
+        title == nil && notes == nil && due == nil && time == nil && target == nil && kept == nil && listId == nil
+            && sectionId == nil && tags == nil && addTags.isEmpty && removeTags.isEmpty && pinned == nil && someday == nil
+            && repeats == nil && duration == nil && subtasks == nil && event == nil && canvas == nil && project == nil
+            && spentDelta == nil && order == nil && done == nil
+    }
 }
 
 /// toyl's saved data, all of it, as JSON. It's tod's format (lists with lanes, tasks keyed by
@@ -178,8 +187,9 @@ struct Doc {
         return taskEntries.map { TaskModel(id: $0.key, entry: $0.value, sections: sections) }
     }
 
+    /// One task, read straight from its entry (not by reading them all).
     func task(_ id: String) -> TaskModel? {
-        taskEntries[id].map { TaskModel(id: id, entry: $0, sections: sectionIds) }
+        self[task: id].map { TaskModel(id: id, entry: $0, sections: sectionIds) }
     }
 
     func list(_ id: String) -> ListModel? { lists.first { $0.id == id } }
@@ -217,7 +227,8 @@ struct Doc {
     subscript(task id: String) -> [String: Any]? {
         get { (json["tasks"] as? [String: Any])?[id] as? [String: Any] }
         set {
-            var tasks = json["tasks"] as? [String: Any] ?? [:]
+            // Taken out first, so it's changed in place rather than copied whole on every write.
+            var tasks = json.removeValue(forKey: "tasks") as? [String: Any] ?? [:]
             tasks[id] = newValue
             json["tasks"] = tasks
         }
@@ -281,6 +292,7 @@ struct Doc {
         if let duration = p.duration { e["duration"] = duration.flatMap { $0 > 0 ? $0 : nil } }
         if let subtasks = p.subtasks { e["subtasks"] = subtasks.map(\.entry) }
         if let event = p.event { e["event"] = event.map(\.entry) }
+        if let canvas = p.canvas { e["canvas"] = canvas.entry }
         if let delta = p.spentDelta, delta != 0 { e["spent"] = max(((e["spent"] as? NSNumber)?.intValue ?? 0) + delta, 0) }
         if let order = p.order { e["order"] = Self.number(order) }
         if p.listId != nil || p.sectionId != nil {
@@ -352,8 +364,9 @@ struct Doc {
         let moving = ids.filter { self[task: $0] != nil }
         guard !moving.isEmpty else { return }
         let movingSet = Set(moving)
+        // Ties broken as the window breaks them (newer first), so a drag doesn't shuffle the rest.
         var rest = tasks.filter { $0.listId == listId && $0.sectionId == section && !movingSet.contains($0.id) }
-            .sorted { ($0.order, $0.createdAt, $0.id) < ($1.order, $1.createdAt, $1.id) }
+            .sorted { ($0.order, -$0.createdAt.timeIntervalSince1970, $0.id) < ($1.order, -$1.createdAt.timeIntervalSince1970, $1.id) }
             .map(\.id)
         let at = before.flatMap { rest.firstIndex(of: $0) } ?? rest.count
         rest.insert(contentsOf: moving, at: at)
@@ -559,7 +572,9 @@ struct Doc {
                 }
             }
         }
-        for (item, id) in zip(task.subtasks, taskIds) {
+        // An id for every item, even one added (by Oyl, an agent) since the window counted them.
+        let ids = task.subtasks.enumerated().map { index, item in index < taskIds.count ? taskIds[index] : projectId + "-" + item.id }
+        for (item, id) in zip(task.subtasks, ids) {
             var draft = TaskDraft(title: item.title)
             draft.listId = task.listId
             draft.sectionId = task.sectionId

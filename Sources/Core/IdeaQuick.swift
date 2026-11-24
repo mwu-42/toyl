@@ -71,13 +71,18 @@ struct IdeaQuick: Equatable {
 
     /// Takes the first aim out of `text`, if there's one: its day.
     static func takeAim(_ text: inout String, now: Date, weekStart: Int) -> String? {
+        takeAimTimed(&text, now: now, weekStart: weekStart)?.day
+    }
+
+    /// The first aim, with the time said with it ("by fri 5pm"), if one was.
+    static func takeAimTimed(_ text: inout String, now: Date, weekStart: Int) -> (day: String, time: String?)? {
         let ns = text as NSString
         let whole = NSRange(location: 0, length: ns.length)
         // A while off ("in a month or so", "next week", "early dec"): an aim, said loosely or not.
         for match in horizon.matches(in: text, range: whole) {
             guard let day = resolve(match, in: ns, now: now, weekStart: weekStart) else { continue }
             text = ns.replacingCharacters(in: match.range, with: " ")
-            return day
+            return (day, nil)
         }
         // A day said loosely: "by fri", "around the 5th", "~dec 1", "tomorrow-ish".
         for match in loose.matches(in: text, range: whole) {
@@ -95,7 +100,7 @@ struct IdeaQuick: Equatable {
                     end += tail.range.length
                 }
                 text = ns.replacingCharacters(in: NSRange(location: match.range.location, length: end - match.range.location), with: " ")
-                return due
+                return (due, read.time)
             }
         }
         // A day with a loose ending: "fri-ish", "dec 5 or so".
@@ -109,7 +114,7 @@ struct IdeaQuick: Equatable {
                 let start = (before as NSString).range(of: phrase, options: .backwards).location
                 guard start != NSNotFound else { continue }
                 text = ns.replacingCharacters(in: NSRange(location: start, length: tail.range.location + tail.range.length - start), with: " ")
-                return due
+                return (due, read.time)
             }
         }
         return nil
@@ -132,6 +137,11 @@ struct IdeaQuick: Equatable {
         }
         let today = calendar.startOfDay(for: now)
         if let unit = group("unit"), let amount = group("amount").map(Self.amount) {
+            // A span only with a word to say it's one ("in 3 weeks", "2 weeks or so"): "review 3
+            // months of statements" and "plan 2 weeks of meals" are counts, not days.
+            let said = text.substring(with: match.range).lowercased()
+            guard said.range(of: #"^(?:by|in|within|around|about|roughly|sometime|aim(?:ing)?\s+for|~)\b|^~|(?:or\s+so|ish)$"#,
+                             options: .regularExpression) != nil else { return nil }
             let component: Calendar.Component = unit.hasPrefix("day") ? .day : unit.hasPrefix("week") ? .weekOfYear : .month
             return calendar.date(byAdding: component, value: amount, to: today).map(day)
         }
@@ -170,8 +180,13 @@ struct IdeaQuick: Equatable {
             case nil: parts.day = by ? 1 : 15
             }
             guard var date = calendar.date(from: parts) else { return nil }
-            // A month that's been: next year's.
-            if date < today, let later = calendar.date(byAdding: .year, value: 1, to: date) { date = later }
+            // A month that's over: next year's. This month: this one (not before today).
+            let monthEnd = calendar.date(from: DateComponents(year: parts.year, month: number + 1, day: length)) ?? date
+            if monthEnd < today, let later = calendar.date(byAdding: .year, value: 1, to: date) {
+                date = later
+            } else if date < today {
+                date = today
+            }
             return day(date)
         }
         return nil

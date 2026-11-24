@@ -52,6 +52,10 @@ struct Quick: Equatable {
     static func parse(_ input: String, lists: [ListModel], now: Date = Date(), weekStart: Int = 1) -> Quick {
         var q = Quick()
         var text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Links are set aside first, so nothing in them is read as a list, a tag or a length
+        // ("~ouster" in a path, "t=45m" in a query), and they come back whole.
+        var links: [String] = []
+        text = setAside(links: text, into: &links)
         if text.hasPrefix("?") {
             q.idea = true
             text = String(text.dropFirst()).trimmingCharacters(in: .whitespaces)
@@ -70,7 +74,7 @@ struct Quick: Equatable {
             if match.range(at: 2).location != NSNotFound {
                 let amount = number(ns.substring(with: match.range(at: 2)))
                 let unit = ns.substring(with: match.range(at: 3)).lowercased()
-                minutes = max(Int((unit.hasPrefix("h") ? amount * 60 : amount).rounded()), 1)
+                minutes = max(Self.minutesOf(unit.hasPrefix("h") ? amount * 60 : amount), 1)
             }
             q.timer = TimerAsk(minutes: stopwatch ? nil : minutes, stopwatch: stopwatch)
             text = ns.replacingCharacters(in: match.range, with: " ")
@@ -82,19 +86,41 @@ struct Quick: Equatable {
         // Days: a deadline said with "due" first (so "due next week" isn't an aim), else any aim
         // first (so "by fri" isn't a deadline).
         text = text.replacingOccurrences(of: "#", with: hash)
+        let today = Day.today(now)
+        var read = false
         if matches(dueWord, in: text) {
-            text = replacing(dueWord, in: text, with: " ")
+            // "due" only goes when a day comes with it ("find out when rent is due" keeps it).
+            let stripped = replacing(dueWord, in: text, with: " ")
+            let hard = TodQuick.read(stripped, now: now, weekStart: weekStart)
+            if hard.due != nil || hard.time != nil {
+                (q.due, q.time) = (hard.due, hard.time)
+                text = consumed(hard, from: stripped) ? "" : hard.title
+                q.target = IdeaQuick.takeAim(&text, now: now, weekStart: weekStart)
+                read = true
+            }
+        }
+        if !read {
+            let aim = IdeaQuick.takeAimTimed(&text, now: now, weekStart: weekStart)
+            q.target = aim?.day
             let before = text
             let hard = TodQuick.read(text, now: now, weekStart: weekStart)
             (q.due, q.time) = (hard.due, hard.time)
             text = consumed(hard, from: before) ? "" : hard.title
-            q.target = IdeaQuick.takeAim(&text, now: now, weekStart: weekStart)
-        } else {
-            q.target = IdeaQuick.takeAim(&text, now: now, weekStart: weekStart)
-            let before = text
-            let hard = TodQuick.read(text, now: now, weekStart: weekStart)
-            (q.due, q.time) = (hard.due, hard.time)
-            text = consumed(hard, from: before) ? "" : hard.title
+            // A time with no day of its own (tod makes that today).
+            let timeAlone = hard.time != nil && hard.due == today && !matches(todayWord, in: before)
+            if let aim {
+                if let time = aim.time, q.time == nil {
+                    // "by fri 5pm": that day, at that time.
+                    q.due = aim.day
+                    q.time = time
+                } else if timeAlone {
+                    // "5pm by fri": the aim's day, at that time.
+                    q.due = aim.day
+                }
+            } else if timeAlone, let time = hard.time, let at = Day.moment(today, time), at < now {
+                // "9am" said at 6pm: tomorrow's, not late the moment it's made.
+                q.due = Day.adding(1, to: today)
+            }
         }
         // An aim on the same day as the deadline says nothing more.
         if q.target != nil, q.target == q.due { q.target = nil }
@@ -103,10 +129,48 @@ struct Quick: Equatable {
             if q.due == nil { q.due = target }
             q.target = nil
         }
-        q.title = tidy(text).replacingOccurrences(of: hash, with: "#")
+        // Repeating, with no day said: from today (a weekday one from the next weekday), so it
+        // shows in today straight away.
+        if let repeats = q.repeats, q.due == nil {
+            var first = today
+            if repeats == .weekdays, let date = Day.date(today) {
+                let weekday = Day.calendar.component(.weekday, from: date)
+                first = Day.adding(weekday == 7 ? 2 : weekday == 1 ? 1 : 0, to: today) ?? today
+            }
+            q.due = first
+        }
+        q.title = putBack(links: tidy(text).replacingOccurrences(of: hash, with: "#"), links)
+        q.notes = q.notes.map { putBack(links: $0, links) }
         q.titleIsEmpty = q.title.isEmpty
         if q.title.isEmpty { q.title = tidy(input.replacingOccurrences(of: "?", with: "", options: .anchored)) }
         return q
+    }
+
+    /// Each link replaced by a mark no other reading matches (a private-use character), noted.
+    private static func setAside(links text: String, into links: inout [String]) -> String {
+        var out = text
+        for match in matchesOf(linkPattern, in: text).reversed() {
+            let ns = out as NSString
+            links.insert(ns.substring(with: match.range), at: 0)
+            out = ns.replacingCharacters(in: match.range, with: "\u{E000}")
+        }
+        return out
+    }
+
+    /// The links back where they were.
+    private static func putBack(links text: String, _ links: [String]) -> String {
+        guard !links.isEmpty else { return text }
+        var out = ""
+        var next = 0
+        for character in text {
+            if character == "\u{E000}", next < links.count {
+                out += links[next]
+                next += 1
+            } else {
+                out.append(character)
+            }
+        }
+        return out
     }
 
     /// Whether tod's reading took the whole of `before` (it then hands back all of it as the
@@ -168,7 +232,9 @@ struct Quick: Equatable {
             // "~dec 1" is an aim, and "~30m" a length: not lists.
             if quoted.location == NSNotFound, monthName.firstMatch(in: name, range: NSRange(location: 0, length: (name as NSString).length)) != nil { continue }
             if q.listId == nil, q.newList == nil {
-                if let id = TodQuick.list(for: name, among: named.map { (id: $0.id, name: $0.name) }) {
+                // A list it names (its name, or a word of it, or the start of one), else a new
+                // one: not any list that happens to contain the letters ("~art" isn't "party").
+                if let id = list(for: name, among: named) ?? named.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame })?.id {
                     q.listId = id
                 } else {
                     q.newList = name
@@ -178,8 +244,12 @@ struct Quick: Equatable {
         }
         let ns = text as NSString
         var tags: [String] = []
+        var taken: [NSRange] = []
         for match in TodQuick.tagPattern.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
             let name = ns.substring(with: match.range(at: 1))
+            // "#123" is an issue's number, said as part of the title: not a tag.
+            if name.allSatisfy(\.isNumber) { continue }
+            taken.append(match.range)
             if q.listId == nil, q.newList == nil, let id = list(for: name, among: named) {
                 q.listId = id
             } else if !tags.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
@@ -187,7 +257,7 @@ struct Quick: Equatable {
             }
         }
         q.tags = tags
-        text = TodQuick.tagPattern.stringByReplacingMatches(in: text, range: NSRange(location: 0, length: ns.length), withTemplate: " ")
+        for range in taken.reversed() { text = (text as NSString).replacingCharacters(in: range, with: " ") }
     }
 
     /// The list a `#name` means: one whose name (or toyl's name for it: inbox, ideas) is it,
@@ -220,11 +290,11 @@ struct Quick: Equatable {
             let hours = number(ns.substring(with: match.range(at: 1)))
             let minutes = match.range(at: 2).location == NSNotFound ? 0 : number(ns.substring(with: match.range(at: 2)))
             text = ns.replacingCharacters(in: match.range, with: " ")
-            let total = Int((hours * 60 + minutes).rounded())
+            let total = Self.minutesOf(hours * 60 + minutes)
             return total > 0 ? min(total, 24 * 60) : nil
         }
         if let match = minutesPattern.firstMatch(in: text, range: whole) {
-            let minutes = Int(number(ns.substring(with: match.range(at: 1))).rounded())
+            let minutes = Self.minutesOf(number(ns.substring(with: match.range(at: 1))))
             text = ns.replacingCharacters(in: match.range, with: " ")
             return minutes > 0 ? min(minutes, 24 * 60) : nil
         }
@@ -234,12 +304,15 @@ struct Quick: Equatable {
     // MARK: - patterns
 
     private static let hash = "\u{FF03}"
+    private static let linkPattern = pattern(#"(?:https?://|www\.)\S+"#)
+    private static let todayWord = pattern(#"\b(?:today|tonight|tod|this\s+(?:morning|afternoon|evening))\b"#)
     private static let pinPattern = pattern(#"(?<!\S)(?:/pin|!{1,3})(?!\S)"#)
     private static let somedayPattern = pattern(#"(?<!\S)/(?:someday|idea|later)(?!\S)"#)
     private static let timerPattern = pattern(#"(?<!\S)/(timer|stopwatch)(?:\s+(\d+(?:[.,]\d+)?)\s?(h|hr|hrs|hours?|m|min|mins|minutes?)\b)?(?!\S)"#)
     private static let dueWord = pattern(#"\bdue(?:\s+(?:by|on|before))?\b"#)
     private static let explicitList = pattern(#"(?<![\p{L}\p{N}_~])~(?:"([^"]+)"|([\p{L}][\p{L}\p{M}\p{N}_\-]*))"#)
-    private static let monthName = pattern(#"^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*$"#)
+    // Only months as they're spelled ("~mar", "~march"): "~marketing" and "~novel" are lists.
+    private static let monthName = pattern(#"^(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)$"#)
     private static let weekday = #"(mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:r(?:s(?:day)?)?)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)"#
     private static let repeatRules: [(NSRegularExpression, TodRepeat, String)] = [
         (pattern(#"\bevery\s+other\s+week\b|\bbiweekly\b|\bfortnightly\b|\bevery\s+(?:2|two)\s+weeks\b"#), .biweekly, " "),
@@ -279,6 +352,13 @@ struct Quick: Equatable {
     }
 
     private static func number(_ text: String) -> Double { Double(text.replacingOccurrences(of: ",", with: ".")) ?? 0 }
+
+    /// A count of minutes from a number as typed, kept to a week (an enormous one, "200000000000h",
+    /// would otherwise not fit in an Int, and stop the program).
+    private static func minutesOf(_ value: Double) -> Int {
+        guard value.isFinite else { return 0 }
+        return Int(min(max(value, 0), 7 * 24 * 60).rounded())
+    }
 
     static func tidy(_ text: String) -> String {
         text.split(whereSeparator: \.isWhitespace).joined(separator: " ")

@@ -74,7 +74,10 @@ It's the v3 format Oyl's to-do store reads, grown:
 - Lists: `{id, name, color, columns[], group?, notes?, archived?}`. The columns are sections.
   `inbox` is the inbox and `dump` is ideas.
 - Tasks: `{listId, columnId, title, notes, due, time, target?, subtasks, done, doneAt, createdAt,
-  updatedAt, order, tags?, pinned?, someday?, repeat?, duration?, spent?, event?: {id, calendar}}`.
+  updatedAt, order, tags?, pinned?, someday?, repeat?, duration?, spent?, event?: {id, calendar, follows?, agreed?,
+  seen?}, canvas?: {id, course, url, due?}}`. `agreed`/`seen` say where a task and its event last agreed (so a sync
+  knows which side moved); `canvas.due` is Canvas's own last date (a task moved by hand stays moved).
+- `.toyl.md.base` (beside toyl.md) is the toyl.md last written: only lines that differ from it are taken in.
 - Also `groups`, `filters`, `timers` (UUID ids; Oyl may mark a timer `oyl: true` when it shows
   it), and `timerLog`.
 - Keep every field you don't know. Never break an existing file.
@@ -114,6 +117,11 @@ It's the v3 format Oyl's to-do store reads, grown:
   `/event`, and `/timer` with no task named, at the start of quick add (the + lines, quick entry, the phone, `toyl add`,
   add_task too). What it'll make shows under the field first; Tab finishes a half-typed word. Named: made at once;
   alone: made ready to name. The phone does lists, projects, groups and timers only.
+- **Nothing redraws the whole window on a timer.** Countdowns tick in their own `TimelineView`s; what goes by the
+  day (today, late, the now line) reads `AppModel.clock` (each minute, at midnight, on wake), never the timers' tick.
+  AppModel doesn't forward the timer engine's changes (only `ringing`). A swipe lives in `Swiping`, watched by rows.
+  `groups`, sidebar counts and autosort's guesses are kept per `Store.version` (and minute): don't recompute them
+  in a view. A row's notes check is `NoteLinks.hasWords` (kept per text).
 - **Everything reorders by dragging** (`Reorder.swift`: `toylDrag` says what's being dragged, `columnDrop` shows a
   line above or below by the pointer's half, or lights the row to drop into). Payloads are `Drag` strings
   (`toyl:`, `toyl-list:`, `toyl-group:`, `toyl-filter:`, `toyl-place:`, `toyl-project:`, `toyl-sub:`…). Tasks:
