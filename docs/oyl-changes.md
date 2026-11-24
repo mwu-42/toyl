@@ -67,3 +67,20 @@ When it's taken in, write `4` into `~/Oyl/.toyl-sync`.
   `takeAim` has a sibling, `takeAimTimed`, that also returns a time said with the aim ("by fri 5pm").
 
 When it's taken in, write `5` into `~/Oyl/.toyl-sync`.
+
+## 6 · 2026-11-23 · quick add shorthand for days
+
+- toyl's quick add (and so `toyl add "<text>"` and add_task) reads TickTick's shorthand for days, said in full before
+  the shared date reading sees the line:
+  - `td`, `tdy`, `eod` today · `tmro`, `2moro` tomorrow (`tmr`, `tmrw` were already read) · `yd`, `yday`, `yest`,
+    `yesterday` yesterday (with a time: yesterday at that time)
+  - `nw` next week · `nm` next month · `nxt` next (`nxt fri`, `nxt wk`) · `wknd` the weekend
+  - `eow`, `eonw`, `eom`, `eonm` the end of this or next week or month
+  - `in 3d`, `in 2w`, `in 3mo` (and `dy`, `wk`, `mth` spellings)
+- The two-letter ones (`td`, `yd`, `nw`, `nm`) count only in lower case, so "TD Bank" or "NW corner" stays a title.
+- This is in `Quick.swift` (toyl's own), not in `TodQuick` or `IdeaQuick`: the copies shared with Oyl are unchanged.
+  If Oyl passes what's typed to `toyl add`, a line with `td` in lower case now gets a day. If Oyl reads quick add
+  itself, it may want `Shorthand` (a small table of words and what they mean, plus yesterday).
+- Nothing changed in toyl.json, toyl.md or any field.
+
+When it's taken in, write `6` into `~/Oyl/.toyl-sync`.

@@ -38,13 +38,13 @@ open behind what you're doing (in front only if you were using toyl), never taki
   - in the sidebar: lists (drop one on a group to put it in, on "lists" to take it out), groups, saved filters, and the places themselves (⌘1–6 follow)
   - in the page: projects by their headings, lists by theirs in all · sublist items, within a task or onto another
 - ✏️ **double-click any name to change it**: a task's title, a list (in the sidebar, its heading, or the big title), a project, a group, a filter,
-  a tag (on every task that has it), a sublist item, a timer. Return keeps it, Escape doesn't.
+  a tag (on every task that has it), a sublist item, a timer. Return keeps it, Escape doesn't. the words are changed right where they are: nothing moves or changes size.
 - 👆 **swipe a task** (two fingers on the trackpad, as in Mail; or a finger on the phone). it pulls freely, then harder and harder, like a rubber band
   - soft right: into its list's **in progress** (or out of it) · hard right: in progress, with a timer going
   - soft left: a **timer** on it (or, if one's going, stop it) · hard left: delete (⌘z undoes it)
 - ✉️ **important email**: gmail and outlook, pulled into the inbox and flagged ✉ email. below.
 - 📁 **projects** inside a list: the big pieces of work (a final project, midterm prep, an event)
-  - a list shows its loose tasks first, then each project under a big heading, with a + to add straight into it
+  - a list shows its loose tasks first, then each project under a big heading: click the heading's line to add straight into it
   - make one: "new project" at the bottom of a list, the list's menu, or a task's project in its description
   - drop a task on a project's heading to put it in; double-click the heading to rename it; right-click to delete it (its tasks stay)
   - a task with a sublist can **turn into a project**: right-click › turn into a project (or "make it a project" by its sublist). each item becomes a task in it
@@ -59,6 +59,9 @@ open behind what you're doing (in front only if you were using toyl), never taki
 - ⌨️ **quick add** reads what you type: `essay draft fri 5pm #cs ~2h !`
   - `#cs` list or tag · `~list` a list · `?` an idea
   - `fri 5pm`, `tomorrow`, `nov 30`, `by fri`, `next week` when it's due
+  - shorthand, as in ticktick: `td` today · `tmr` tomorrow · `yd` yesterday · `nw` next week · `nm` next month · `eod` `eow` `eom` the end of the day, week, month · `wknd` · `nxt fri` · `in 3d` `in 2w` `in 3mo`
+    - the two-letter ones only in lower case, so "TD Bank" stays as typed
+  - what's been read is shaded in the field as you type (the date, the list, the tags), and shown under it
   - `every week` repeats · `~30m` its timer's length · `!` pin · ` // ` notes
   - `/timer`, `/timer 30m`, `/stopwatch` start a timer on it (alone, just a timer)
   - **a slash word first makes something else**, shown under the field before you press Return (Tab finishes the word):
@@ -67,7 +70,10 @@ open behind what you're doing (in front only if you were using toyl), never taki
     - alone (`/list`, `/project`), it's made ready for you to name
 - ⏱ **timers on any task** (a running one shows on its task, and in timers; nothing at the window's foot): swipe it softly left, right-click › timer for a length, or pick one in its details: 10m · 30m · 1h · 6h · 24h, or type one. time adds up on the task.
 - 🔗 **links in notes are cards** in the details: the page's icon and title; click to open. rows stay plain.
-- ➕ **every list has its heading in all**, empty or not, with a + on the right to add straight into it.
+- ➕ **every list has its heading in all**, empty or not: click anywhere on a heading's line to add straight into it (a + shows as you point at it). double-click the name to rename it instead.
+- 🖥 **full screen stays full screen**: quit toyl in full screen (or update it) and it opens in full screen again, on the same display
+  - on the display you're working on, it waits until you switch to toyl, so an update never takes you off what you're doing
+  - on another display, it goes back straight away, and the app you were using keeps the keys
 - 🪄 **autosort**: files new tasks where your others go (on the mac). the 🪄 by the filter (in all and the inbox, or ⌥⌘A) sorts everything in the inbox at once:
   - a task naming a list goes there ("mint all hands slides" → mint); then where autosort's sure; then apple intelligence, which has to agree twice
   - what clearly fits nowhere stays in the inbox · ⌘z undoes the whole sort · "look over autosort's guesses…" (the inbox's menu) to go one by one

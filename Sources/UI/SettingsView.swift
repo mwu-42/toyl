@@ -589,7 +589,8 @@ struct QuickEntryView: View {
                        onTab: {
                            if let word = Quick.commandsStarting(text).first { text = "/" + word.word + " " }
                            return true
-                       })
+                       },
+                       marks: parsed.map { Quick.marks(in: text, read: $0) } ?? [])
                 .frame(height: 28)
             HStack(spacing: 6) {
                 if let command = Quick.command(text, lists: model.snap.lists, weekStart: model.snap.weekStart) {

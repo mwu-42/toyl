@@ -8,7 +8,9 @@ import Foundation
 /// - `#name`: the list whose name it starts (as Oyl's notch reads it: "#cs" is "💻 cs 106b"),
 ///   or else a tag. `~name` (or `~"two words"`) is always a list, made if there isn't one.
 /// - days and times as tod reads them ("fri 5pm", "tomorrow", "in 3 days", "nov 30"): a
-///   deadline. Said loosely ("by fri", "next week", "early dec", "in a month or so", "fri-ish"):
+///   deadline. Shorthand works too, as in TickTick: `td` today, `tmr` tomorrow, `yd` yesterday,
+///   `nw` next week, `nm` next month, `eod`, `eow`, `eom` (end of day, week, month), `wknd`,
+///   `nxt fri`, `in 3d` / `2w` / `3mo` (`Shorthand`). Said loosely ("by fri", "next week", "early dec", "in a month or so", "fri-ish"):
 ///   an aim, a day to have it done by roughly, which can slip (Oyl's distinction). "due" makes
 ///   anything a deadline.
 /// - `every day / weekday / week / other week / month / year`, `every fri`, `every 5th`,
@@ -82,12 +84,18 @@ struct Quick: Equatable {
         q.repeats = takeRepeat(&text)
         q.duration = takeDuration(&text)
         takeLists(&text, into: &q, lists: lists)
+        // "td", "tmr", "eow": said in full, for the reading below. Yesterday is toyl's own.
+        text = Shorthand.spelledOut(text)
+        let saidYesterday = cut(Shorthand.yesterday, from: &text)
+        let yesterday = cut(Shorthand.yesterdayShort, from: &text) || saidYesterday
 
         // Days: a deadline said with "due" first (so "due next week" isn't an aim), else any aim
         // first (so "by fri" isn't a deadline).
         text = text.replacingOccurrences(of: "#", with: hash)
         let today = Day.today(now)
         var read = false
+        // Only a time was said (tod makes that today).
+        var timeOnly = false
         if matches(dueWord, in: text) {
             // "due" only goes when a day comes with it ("find out when rent is due" keeps it).
             let stripped = replacing(dueWord, in: text, with: " ")
@@ -96,6 +104,7 @@ struct Quick: Equatable {
                 (q.due, q.time) = (hard.due, hard.time)
                 text = consumed(hard, from: stripped) ? "" : hard.title
                 q.target = IdeaQuick.takeAim(&text, now: now, weekStart: weekStart)
+                timeOnly = hard.time != nil && hard.due == today && !matches(todayWord, in: stripped)
                 read = true
             }
         }
@@ -108,6 +117,7 @@ struct Quick: Equatable {
             text = consumed(hard, from: before) ? "" : hard.title
             // A time with no day of its own (tod makes that today).
             let timeAlone = hard.time != nil && hard.due == today && !matches(todayWord, in: before)
+            timeOnly = timeAlone && aim == nil
             if let aim {
                 if let time = aim.time, q.time == nil {
                     // "by fri 5pm": that day, at that time.
@@ -117,11 +127,13 @@ struct Quick: Equatable {
                     // "5pm by fri": the aim's day, at that time.
                     q.due = aim.day
                 }
-            } else if timeAlone, let time = hard.time, let at = Day.moment(today, time), at < now {
+            } else if timeAlone, !yesterday, let time = hard.time, let at = Day.moment(today, time), at < now {
                 // "9am" said at 6pm: tomorrow's, not late the moment it's made.
                 q.due = Day.adding(1, to: today)
             }
         }
+        // "yd", "yesterday 3pm": yesterday (late already: for what's owed).
+        if yesterday, q.due == nil || timeOnly { q.due = Day.adding(-1, to: today) }
         // An aim on the same day as the deadline says nothing more.
         if q.target != nil, q.target == q.due { q.target = nil }
         // toyl has no aims any more: "by fri", "next week" are when it's due.
@@ -363,6 +375,90 @@ struct Quick: Equatable {
     static func tidy(_ text: String) -> String {
         text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
             .trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: ",;:-–—·")))
+    }
+}
+
+// MARK: - shorthand
+
+/// Days said the quick way, as TickTick takes them: `td`, `tmr`, `yd`, `nw`, `eow`, `in 3d`.
+/// Each becomes the words tod's reading knows ("today", "next week", "in 3 days"); yesterday,
+/// which tod doesn't know, is toyl's own. The two-letter ones count only in lower case, so "TD
+/// Bank" and "NW corner" stay as they are.
+enum Shorthand {
+    /// A whole word: nothing but a space (or the line's start) before it, no letter after.
+    private static func word(_ words: String, caseSensitive: Bool = false) -> NSRegularExpression {
+        try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}#~/@_\x{E000}-])(?:"# + words + #")(?![\p{L}\p{N}_])"#,
+                                 options: caseSensitive ? [] : [.caseInsensitive])
+    }
+
+    private static let rules: [(NSRegularExpression, String)] = [
+        (word("td", caseSensitive: true), "today"),
+        (word("tdy|2day|eod"), "today"),
+        (word("tmro|tmrow|tmmrw|2moro|2morrow|2mrw"), "tomorrow"),
+        (word("nw", caseSensitive: true), "next week"),
+        (word("nm", caseSensitive: true), "next month"),
+        (word("nxt"), "next"),
+        (word("eonw"), "end of next week"),
+        (word("eow"), "end of the week"),
+        (word("eonm"), "end of next month"),
+        (word("eom"), "end of the month"),
+        (word("wknd|wkend"), "weekend"),
+        (try! NSRegularExpression(pattern: #"\b(next|this)\s+wk\b"#, options: [.caseInsensitive]), "$1 week"),
+        (try! NSRegularExpression(pattern: #"\bin\s+(\d{1,3})\s?(?:d|dy|dys)\b"#, options: [.caseInsensitive]), "in $1 days"),
+        (try! NSRegularExpression(pattern: #"\bin\s+(\d{1,3})\s?(?:w|wk|wks)\b"#, options: [.caseInsensitive]), "in $1 weeks"),
+        (try! NSRegularExpression(pattern: #"\bin\s+(\d{1,3})\s?(?:mo|mos|mth|mths)\b"#, options: [.caseInsensitive]), "in $1 months"),
+    ]
+
+    /// Yesterday, said in full or short ("due yesterday", "yday").
+    static let yesterday = word(#"(?:(?:due|on|by|for|since)\s+)?(?:yesterday|yday|yest|ystd)"#)
+    static let yesterdayShort = try! NSRegularExpression(
+        pattern: #"(?<![\p{L}\p{N}#~/@_\x{E000}-])(?:(?:[Dd]ue|[Oo]n|[Bb]y|[Ff]or)\s+)?yd(?![\p{L}\p{N}_])"#)
+
+    /// The line with its shorthand said in full.
+    static func spelledOut(_ text: String) -> String {
+        var out = text
+        for (pattern, template) in rules {
+            out = pattern.stringByReplacingMatches(in: out, range: NSRange(location: 0, length: (out as NSString).length), withTemplate: template)
+        }
+        return out
+    }
+}
+
+extension Quick {
+    /// The words of `input` that were read as something (a day, a list, a tag, a length), to
+    /// shade as they're typed: what's left of the line, word for word, is the title, and the rest
+    /// was read. Words next to each other are shaded as one. Nothing before a word's been read.
+    static func marks(in input: String, read q: Quick) -> [NSRange] {
+        let read = q.due != nil || q.time != nil || q.listId != nil || q.newList != nil || !q.tags.isEmpty || q.repeats != nil
+            || q.duration != nil || q.pinned || q.someday || q.timer != nil || q.target != nil
+        guard read else { return [] }
+        let ns = input as NSString
+        // Notes aren't read: only what's before " // ".
+        let end = ns.range(of: " // ").location == NSNotFound ? ns.length : ns.range(of: " // ").location
+        func plain(_ word: String) -> String {
+            word.lowercased().trimmingCharacters(in: CharacterSet.punctuationCharacters.union(.symbols).subtracting(CharacterSet(charactersIn: "#~")))
+        }
+        let titleWords = q.titleIsEmpty ? [] : q.title.split(whereSeparator: \.isWhitespace).map { plain(String($0)) }
+        var next = 0
+        var marks: [NSRange] = []
+        let words = (try? NSRegularExpression(pattern: #"\S+"#))?.matches(in: input, range: NSRange(location: 0, length: end)) ?? []
+        for match in words {
+            let said = ns.substring(with: match.range)
+            let word = plain(said)
+            // A dash or a comma on its own is neither ("!" is: pinned).
+            if word.isEmpty, !said.contains("!") { continue }
+            if next < titleWords.count, word == titleWords[next] {
+                next += 1
+                continue
+            }
+            if let last = marks.last, ns.substring(with: NSRange(location: NSMaxRange(last), length: match.range.location - NSMaxRange(last)))
+                .allSatisfy(\.isWhitespace) {
+                marks[marks.count - 1] = NSRange(location: last.location, length: NSMaxRange(match.range) - last.location)
+            } else {
+                marks.append(match.range)
+            }
+        }
+        return marks
     }
 }
 

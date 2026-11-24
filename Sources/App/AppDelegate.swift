@@ -51,17 +51,114 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
-    /// Remembers whether the window was open, so an update (which quits toyl and opens it again)
-    /// leaves it as it was.
+    /// Remembers whether the window was open, and full screen, and on which display, so an
+    /// update (which quits toyl and opens it again) leaves it as it was.
     func applicationWillTerminate(_ notification: Notification) {
+        let defaults = UserDefaults.standard
+        defaults.set(Date().timeIntervalSince1970, forKey: "relaunch.at")
+        // Still waiting to go back to full screen (never looked at since it opened): as it was.
+        if fullScreenWaiting {
+            defaults.set(true, forKey: "relaunch.windowOpen")
+            return
+        }
         let open = window?.isVisible == true && !NSApp.isHidden
-        UserDefaults.standard.set(open, forKey: "relaunch.windowOpen")
-        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "relaunch.at")
+        defaults.set(open, forKey: "relaunch.windowOpen")
+        defaults.set(open && window?.styleMask.contains(.fullScreen) == true, forKey: "window.fullScreen")
+        if let display = window?.screen.flatMap(Self.display) { defaults.set(display, forKey: "window.display") }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showMain()
         return true
+    }
+
+    // MARK: - full screen, kept across an update
+
+    /// Quit in full screen, opened again: full screen again once toyl's the app in use (you switch
+    /// to it), so an update never takes you off what you're doing.
+    private var fullScreenWaiting = false
+    /// The app that was in use when toyl went back to full screen on another display, to hand
+    /// the keys back to.
+    private var givingBack: NSRunningApplication?
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        // Not for settings, which opens on its own.
+        guard fullScreenWaiting, settings?.isVisible != true else { return }
+        showMain()
+    }
+
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        guard let window, !window.styleMask.contains(.fullScreen) else { return }
+        // What leaving full screen goes back to, after an update too.
+        UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: "window.normalFrame")
+    }
+
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        UserDefaults.standard.set(true, forKey: "window.fullScreen")
+        if let display = window.screen.flatMap(Self.display) { UserDefaults.standard.set(display, forKey: "window.display") }
+        if let app = givingBack {
+            givingBack = nil
+            if NSApp.isActive {
+                NSApp.yieldActivation(to: app)
+                app.activate()
+            }
+        }
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        UserDefaults.standard.set(false, forKey: "window.fullScreen")
+    }
+
+    /// Back to full screen, on the display it was on. Straight away if that display isn't the
+    /// one you're working on (it fills that one, and what you were using keeps the keys);
+    /// otherwise once you switch to toyl.
+    private func reopenFullScreen() {
+        let defaults = UserDefaults.standard
+        let saved = defaults.object(forKey: "window.display") as? UInt32
+        let screen = NSScreen.screens.first { Self.display($0) == saved } ?? window.screen ?? NSScreen.main
+        if let screen {
+            var frame = defaults.string(forKey: "window.normalFrame").map(NSRectFromString) ?? window.frame
+            frame.size.width = min(max(frame.width, window.minSize.width), screen.visibleFrame.width)
+            frame.size.height = min(max(frame.height, window.minSize.height), screen.visibleFrame.height)
+            if !screen.visibleFrame.contains(frame) {
+                frame.origin = NSPoint(x: screen.visibleFrame.midX - frame.width / 2, y: screen.visibleFrame.midY - frame.height / 2)
+            }
+            window.setFrame(frame, display: false)
+        }
+        if let screen, let using = Self.screenInUse(), using != screen {
+            givingBack = NSWorkspace.shared.frontmostApplication
+            enterFullScreen()
+        } else {
+            fullScreenWaiting = true
+        }
+    }
+
+    private func enterFullScreen() {
+        window.orderFront(nil)
+        DispatchQueue.main.async { [weak self] in
+            guard let window = self?.window, !window.styleMask.contains(.fullScreen) else { return }
+            window.toggleFullScreen(nil)
+        }
+    }
+
+    /// A display's number, which stays the same while it's plugged in.
+    private static func display(_ screen: NSScreen) -> UInt32? {
+        (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+    }
+
+    /// The display with the window you're working in (the app in use's front window); nil
+    /// when that's toyl.
+    private static func screenInUse() -> NSScreen? {
+        guard let front = NSWorkspace.shared.frontmostApplication, front.processIdentifier != getpid() else { return nil }
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        let top = NSScreen.screens.first?.frame.height ?? 0
+        for info in windows where info[kCGWindowOwnerPID as String] as? pid_t == front.processIdentifier && info[kCGWindowLayer as String] as? Int == 0 {
+            guard let bounds = info[kCGWindowBounds as String] as? NSDictionary, let rect = CGRect(dictionaryRepresentation: bounds) else { continue }
+            // Window bounds count down from the top of the main display; screens count up.
+            let middle = NSPoint(x: rect.midX, y: top - rect.midY)
+            if let screen = NSScreen.screens.first(where: { $0.frame.contains(middle) }) { return screen }
+        }
+        return NSScreen.main
     }
 
     func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? { model?.store.undoManager }
@@ -87,7 +184,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let defaults = UserDefaults.standard
         let relaunched = Date().timeIntervalSince1970 - defaults.double(forKey: "relaunch.at") < 60
         defaults.removeObject(forKey: "relaunch.at")
-        if !relaunched || defaults.object(forKey: "relaunch.windowOpen") as? Bool ?? true { window.makeKeyAndOrderFront(nil) }
+        if !relaunched || defaults.object(forKey: "relaunch.windowOpen") as? Bool ?? true {
+            // Full screen when it was quit: full screen again, on the same display.
+            if defaults.bool(forKey: "window.fullScreen") { reopenFullScreen() } else { window.makeKeyAndOrderFront(nil) }
+        }
         model.watchSwipes()
         model.watchKeys(in: window) { [weak self] in self?.openQuickEntry() }
         roomWatch = model.$showCalendar.dropFirst().filter { $0 }.map { _ in () }
@@ -101,6 +201,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc func showMain() {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
+        if fullScreenWaiting {
+            fullScreenWaiting = false
+            enterFullScreen()
+        }
     }
 
     // MARK: - toyl:// links

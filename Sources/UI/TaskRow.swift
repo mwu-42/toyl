@@ -24,16 +24,13 @@ struct TaskRow: View {
                 .onTapGesture { model.complete([task.id]) }
                 .help(task.done ? "uncheck" : "check off")
             VStack(alignment: .leading, spacing: 2) {
-                if editing {
-                    TitleEditor(model: model, task: task)
-                } else {
-                    Text(model.display(task.title))
-                        .font(Theme.body)
-                        .foregroundStyle(done ? Theme.secondary : Theme.ink)
-                        .strikethrough(done, color: Theme.faint)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .animation(.easeOut(duration: 0.2), value: done)
-                }
+                Text(model.display(task.title))
+                    .font(Theme.body)
+                    .foregroundStyle(done ? Theme.secondary : Theme.ink)
+                    .strikethrough(done, color: Theme.faint)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .animation(.easeOut(duration: 0.2), value: done)
+                    .changedInPlace(editing) { TitleEditor(model: model, task: task) }
                 if let meta = metaLine { meta.font(Theme.meta).lineLimit(1) }
                 if !task.subtasks.isEmpty || (model.addingSublist == task.id && !done) {
                     Sublist(model: model, task: task, adding: model.addingSublist == task.id && !done)
@@ -297,27 +294,26 @@ struct Sublist: View {
                 HStack(spacing: 8) {
                     CheckCircle(done: item.done, size: 13)
                         .onTapGesture { change(item.id) { $0.done.toggle() } }
-                    if editing == item.id {
-                        SubEditor(title: item.title) { title in
-                            if let title { change(item.id) { $0.title = title } }
-                            editing = nil
-                        }
-                    } else {
-                        Text(model.display(item.title))
-                            .font(Theme.font(15))
-                            .foregroundStyle(item.done ? Theme.secondary : Theme.ink)
-                            .strikethrough(item.done, color: Theme.faint)
-                            .animation(.easeOut(duration: 0.2), value: item.done)
-                            // A click selects the task, as anywhere on it; a double-click changes the item.
-                            .onTapGesture {
-                                if DoubleClick.second("sub:" + item.id) {
-                                    editing = item.id
-                                } else {
-                                    model.select(task.id)
-                                    model.leaveTyping()
-                                }
+                    Text(model.display(item.title))
+                        .font(Theme.font(15))
+                        .foregroundStyle(item.done ? Theme.secondary : Theme.ink)
+                        .strikethrough(item.done, color: Theme.faint)
+                        .animation(.easeOut(duration: 0.2), value: item.done)
+                        // A click selects the task, as anywhere on it; a double-click changes the item.
+                        .onTapGesture {
+                            if DoubleClick.second("sub:" + item.id) {
+                                editing = item.id
+                            } else {
+                                model.select(task.id)
+                                model.leaveTyping()
                             }
-                    }
+                        }
+                        .changedInPlace(editing == item.id) {
+                            SubEditor(title: item.title) { title in
+                                if let title { change(item.id) { $0.title = title } }
+                                editing = nil
+                            }
+                        }
                 }
                 .contentShape(Rectangle())
                 .toylDrag(model, "toyl-sub:\(task.id)|\(item.id)") { SidebarDragPreview(text: model.display(item.title)) }
@@ -472,7 +468,6 @@ struct TitleEditor: View {
                    onUp: { finish(keep: true, leave: true); model.moveSelection(-1); return true },
                    onDown: { finish(keep: true, leave: true); model.moveSelection(1); return true },
                    onEnd: { finish(keep: true, leave: false) })
-            .frame(height: 20)
             .onDisappear { finish(keep: true, leave: false) }
     }
 
@@ -505,10 +500,9 @@ struct SubEditor: View {
     }
 
     var body: some View {
-        PlainField(text: $text, font: Theme.nsFont(15), autofocus: true,
+        PlainField(text: $text, font: Theme.nsFont(15), name: "item", autofocus: true,
                    onSubmit: { finish(keep: true, leave: true) }, onEscape: { finish(keep: false, leave: true) },
                    onTab: { true }, onEnd: { finish(keep: true, leave: false) })
-            .frame(height: 19)
             .onDisappear { finish(keep: true, leave: false) }
     }
 

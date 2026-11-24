@@ -130,6 +130,18 @@ It's the v3 format Oyl's to-do store reads, grown:
   `placeOrder` (⌘1–6 follow). Tags and timers aren't reordered (tags have no order of their own).
 - **Double-click any name to change it** (lists, projects, groups, filters, tags, sublist items, timers, titles,
   the page title). Rows whose first click already does something use `DoubleClick.second`, so it stays instant.
+  The field goes over the words with `changedInPlace` (Theme.swift): the words stay, unseen, holding their room,
+  and the field sits on their baseline, so nothing moves or changes height. Never swap a `Text` for a field, and
+  never give an in-place field a height of its own. `__keys` checks this pixel by pixel.
+- **A heading's line adds a task** (`GroupHeading`): a click anywhere on it opens the + line under it; a
+  double-click on the name renames it (a single click there waits a moment to be sure). No + button on the right.
+- **Quick add shorthand** (`Shorthand` in Quick.swift): `td`, `tmr`, `yd`, `nw`, `nm`, `eod`, `eow`, `eom`, `wknd`,
+  `nxt`, `in 3d/2w/3mo`, said in full before tod's reading (yesterday is toyl's own). Two-letter ones only in lower
+  case. `Quick.marks` finds the words read (the line minus the title, word by word) and `PlainField(marks:)`
+  shades them as they're typed (quick add, the + lines, quick entry).
+- **Full screen survives a quit** (`AppDelegate.reopenFullScreen`): `window.fullScreen`, `window.display` and
+  `window.normalFrame` are kept; it goes back at once on another display (handing the keys back), else when toyl
+  is next made active. Never toggle full screen while testing.
 - **A row's sublist "add" line is hidden** until asked for (right-click › add to its sublist).
 - **Plain words** in what toyl says: no "puts it back"-style phrasing ("deleted", "restored").
 - **The last action** (`banner`) shows at the top right under the title and fades after a few seconds.

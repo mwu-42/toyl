@@ -21,6 +21,9 @@ enum Theme {
     static let nsPaper = NSColor(srgbRed: 0.984, green: 0.984, blue: 0.980, alpha: 1)    // #fbfbfa
     static let nsSidebar = NSColor(srgbRed: 0.957, green: 0.957, blue: 0.949, alpha: 1)  // #f4f4f2
     static let nsInk = NSColor(srgbRed: 0.114, green: 0.114, blue: 0.110, alpha: 1)
+    /// What quick add has read, shaded in the words as they're typed.
+    static let nsMark = NSColor(srgbRed: 0.592, green: 0.553, blue: 0.475, alpha: 0.3)
+    static let nsMarkInk = NSColor(srgbRed: 0.388, green: 0.353, blue: 0.290, alpha: 1)
     static let nsSecondary = NSColor(srgbRed: 0.451, green: 0.451, blue: 0.439, alpha: 1)
     static let nsFaint = NSColor(srgbRed: 0.651, green: 0.651, blue: 0.635, alpha: 1)
 
@@ -82,6 +85,8 @@ struct PlainField: NSViewRepresentable {
     var onDown: (() -> Bool)?
     var onBegin: (() -> Void)?
     var onEnd: (() -> Void)?
+    /// What's shaded in the words as they're typed: what quick add has read ("tmr", "#cs", "5pm").
+    var marks: [NSRange] = []
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -124,6 +129,7 @@ struct PlainField: NSViewRepresentable {
             context.coordinator.focus = focus
             DispatchQueue.main.async { (field as? InkField)?.takeKeys() }
         }
+        context.coordinator.shade(field)
     }
 
     static func dismantleNSView(_ field: NSTextField, coordinator: Coordinator) {
@@ -140,6 +146,8 @@ struct PlainField: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: PlainField
         var focus = 0
+        /// What's shaded now, and in which words.
+        private var shaded: (marks: [NSRange], text: String) = ([], "")
 
         init(_ parent: PlainField) { self.parent = parent }
 
@@ -148,12 +156,40 @@ struct PlainField: NSViewRepresentable {
             if parent.text != field.stringValue { parent.text = field.stringValue }
         }
 
-        func controlTextDidEndEditing(_ notification: Notification) { parent.onEnd?() }
+        func controlTextDidEndEditing(_ notification: Notification) {
+            shaded = ([], "")
+            parent.onEnd?()
+        }
 
         /// The caret in ink, not the system's blue.
         func controlTextDidBeginEditing(_ notification: Notification) {
-            ((notification.object as? NSTextField)?.currentEditor() as? NSTextView)?.insertionPointColor = Theme.nsInk
+            guard let field = notification.object as? NSTextField else { return }
+            (field.currentEditor() as? NSTextView)?.insertionPointColor = Theme.nsInk
+            shaded = ([], "")
+            shade(field)
             parent.onBegin?()
+        }
+
+        /// Shades the marked words while they're being typed (the field's own words stay plain
+        /// once it lets go). Never while letters are being put together.
+        func shade(_ field: NSTextField) {
+            guard let editor = field.currentEditor() as? NSTextView, !editor.hasMarkedText(),
+                  let storage = editor.textStorage else { return }
+            let marks = parent.marks.filter { NSMaxRange($0) <= storage.length && $0.length > 0 }
+            guard marks != shaded.marks || storage.string != shaded.text else { return }
+            if marks.isEmpty && shaded.marks.isEmpty { shaded.text = storage.string; return }
+            shaded = (marks, storage.string)
+            let whole = NSRange(location: 0, length: storage.length)
+            storage.beginEditing()
+            storage.removeAttribute(.backgroundColor, range: whole)
+            storage.addAttribute(.foregroundColor, value: parent.color, range: whole)
+            for range in marks {
+                storage.addAttribute(.backgroundColor, value: Theme.nsMark, range: range)
+                storage.addAttribute(.foregroundColor, value: Theme.nsMarkInk, range: range)
+            }
+            storage.endEditing()
+            // What's typed next is plain until it's read.
+            editor.typingAttributes = [.font: parent.font, .foregroundColor: parent.color]
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
@@ -242,6 +278,18 @@ final class InkField: NSTextField {
         let became = super.becomeFirstResponder()
         (currentEditor() as? NSTextView)?.insertionPointColor = Theme.nsInk
         return became
+    }
+}
+
+extension View {
+    /// Words changed where they are (double-click a title, a name): while `editing`, `editor` lies
+    /// over them, its words on theirs (the same line, the same place), and they stay, unseen, to
+    /// hold their room. So nothing moves: not the line's height, not the rows under it. `room` is
+    /// as wide as the field may grow.
+    func changedInPlace<Editor: View>(_ editing: Bool, room: CGFloat = .infinity, @ViewBuilder editor: () -> Editor) -> some View {
+        opacity(editing ? 0 : 1)
+            .frame(maxWidth: editing ? room : nil, alignment: .leading)
+            .overlay(alignment: .leadingFirstTextBaseline) { if editing { editor() } }
     }
 }
 

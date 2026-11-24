@@ -97,19 +97,19 @@ struct Header: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 14) {
             // A list's or a filter's name: double-click to change it.
-            if renaming, let name = titleName, let place = renamingPlace {
-                RenameField(name: name, font: Theme.nsFont(30, bold: true)) { renameTitle(place, to: $0) } done: { renaming = false }
-                    .frame(maxWidth: 420)
-            } else {
-                Text(model.title(model.place))
-                    .font(Theme.title)
-                    .lineLimit(1)
-                    .onTapGesture(count: 2) {
-                        guard titleName != nil else { return }
-                        renamingPlace = model.place
-                        renaming = true
+            Text(model.title(model.place))
+                .font(Theme.title)
+                .lineLimit(1)
+                .onTapGesture(count: 2) {
+                    guard titleName != nil else { return }
+                    renamingPlace = model.place
+                    renaming = true
+                }
+                .changedInPlace(renaming && titleName != nil && renamingPlace != nil, room: 420) {
+                    if let name = titleName, let place = renamingPlace {
+                        RenameField(name: name, font: Theme.nsFont(30, bold: true)) { renameTitle(place, to: $0) } done: { renaming = false }
                     }
-            }
+                }
             Spacer(minLength: 10)
             if model.place == .inbox || model.place == .anytime {
                 // Autosort: a small wand that files everything in the inbox where it belongs.
@@ -229,7 +229,8 @@ struct QuickAdd: View {
                            onSubmit: submit,
                            onEscape: { if text.isEmpty { model.leaveTyping() } else { text = "" } },
                            onTab: { _ = complete(); return true },
-                           onDown: { model.leaveTyping(); model.enterList(); return true })
+                           onDown: { model.leaveTyping(); model.enterList(); return true },
+                           marks: parsed.map { Quick.marks(in: text, read: $0) } ?? [])
                     .frame(height: 21)
             }
             .padding(.horizontal, 13)
@@ -408,46 +409,56 @@ struct GroupHeading: View {
     let group: TaskGroup
     @Local private var targeted = false
     @Local private var renaming = false
+    @Local private var hovering = false
 
     /// The list it heads, when it's a list's heading (in all, grouped by list).
     private var headsList: String? { group.id.hasPrefix("list:") ? group.listId : nil }
 
+    /// A click on the line adds a task under it (a list's, a project's, a section's).
+    private var adds: Bool { group.listId != nil }
+
+    /// Its name can be changed: a project's, or a list's that isn't one of toyl's own.
+    private var renamable: Bool { group.big || headsList.flatMap({ model.snap.list($0) })?.isSpecial == false }
+
+    private var renamingNow: Bool {
+        if let project = group.projectId, group.listId != nil { return renaming || model.renaming == "project:" + project }
+        return headsList != nil && renaming
+    }
+
     var body: some View {
+        let renamingNow = renamingNow
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            if let project = group.projectId, let list = group.listId, renaming || model.renaming == "project:" + project {
-                RenameField(name: group.title ?? "", font: Theme.nsFont(21, bold: true)) { name in model.renameProject(project, in: list, to: name) } done: {
-                    renaming = false
-                    if model.renaming == "project:" + project { model.renaming = nil }
-                }
-            } else if let list = headsList, renaming, let name = model.snap.list(list)?.name {
-                RenameField(name: name, font: Theme.nsFont(15, bold: true)) { model.renameList(list, to: $0) } done: { renaming = false }
-            } else {
-                if group.big { Image(systemName: "folder").font(.system(size: 14)).foregroundStyle(Theme.accent) }
-                Text(group.title.map(model.display) ?? "")
-                    .font(Theme.font(group.big ? 21 : 15, bold: true))
-                    .foregroundStyle(Theme.ink)
-                    .onTapGesture(count: 2) {
-                        if group.big || headsList.flatMap({ model.snap.list($0) })?.isSpecial == false { renaming = true }
-                    }
-                if let subtitle = group.subtitle {
-                    Text(subtitle).font(Theme.meta).foregroundStyle(Theme.secondary)
-                }
+            if group.big { Image(systemName: "folder").font(.system(size: 14)).foregroundStyle(Theme.accent) }
+            Text(group.title.map(model.display) ?? "")
+                .font(Theme.font(group.big ? 21 : 15, bold: true))
+                .foregroundStyle(Theme.ink)
+                // A double-click on the name changes it; a single one adds, as anywhere on the line.
+                .gesture(TapGesture(count: 2).onEnded { renaming = true }.exclusively(before: TapGesture().onEnded { add() }),
+                         isEnabled: renamable && !renamingNow)
+                .changedInPlace(renamingNow) { renameField }
+            if let subtitle = group.subtitle {
+                Text(subtitle).font(Theme.meta).foregroundStyle(Theme.secondary).opacity(renamingNow ? 0 : 1)
+            }
+            // What a click on the line does.
+            if adds, hovering, !renamingNow, model.addingTo != group.id {
+                Image(systemName: "plus").font(.system(size: 11)).foregroundStyle(Theme.faint)
+                    .transition(.opacity)
             }
             Spacer()
             if group.isLate, !group.tasks.isEmpty { LateMenu(model: model, ids: group.tasks.map(\.id)) }
             Text("\(group.tasks.count)").font(Theme.font(12.5)).foregroundStyle(Theme.faint).opacity(group.tasks.isEmpty ? 0 : 1)
-            if group.listId != nil {
-                Quiet(label: "", symbol: "plus", size: 14) {
-                    withAnimation(.snappy(duration: 0.2)) { model.addingTo = model.addingTo == group.id ? nil : group.id }
-                }
-                .help("new task here")
-            }
         }
         .padding(.horizontal, 12)
         .padding(.top, group.big ? 30 : 20)
         .padding(.bottom, group.big ? 8 : 6)
-        .overlay(alignment: .bottom) { Rectangle().fill(targeted ? Theme.accent : Theme.rule).frame(height: targeted ? 2 : 1).padding(.horizontal, 10) }
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(targeted ? Theme.accent : hovering && adds ? Theme.faint.opacity(0.6) : Theme.rule)
+                .frame(height: targeted ? 2 : 1).padding(.horizontal, 10)
+        }
         .contentShape(Rectangle())
+        .onHover { inside in withAnimation(.easeOut(duration: 0.12)) { hovering = inside } }
+        .onTapGesture { if !renamingNow { add() } }
+        .help(adds ? "click to add a task here" : "")
         .modifier(HeadingDrag(model: model, payload: payload, title: group.title.map(model.display) ?? ""))
         .columnDrop(model, lit: $targeted, inset: 10, accepts: accepts, reorders: { payload != nil && Drag.kind($0) == Drag.kind(payload) }) { items, spot in
             if spot == .into {
@@ -457,13 +468,30 @@ struct GroupHeading: View {
             return reorder(items, spot)
         }
         .contextMenu {
-            if group.listId != nil { Button("new task here") { withAnimation(.snappy(duration: 0.2)) { model.addingTo = group.id } } }
+            if adds { Button("new task here") { withAnimation(.snappy(duration: 0.2)) { model.addingTo = group.id } } }
             if let project = group.projectId, let list = group.listId {
                 Button("rename project") { renaming = true }
                 Button("delete project (its tasks stay in the list)") { model.deleteProject(project, in: list) }
             } else if let list = headsList, model.snap.list(list)?.isSpecial == false {
                 Button("rename list") { renaming = true }
             }
+        }
+    }
+
+    /// The line under it to type a new task into (or, open already, put away).
+    private func add() {
+        guard adds else { return }
+        withAnimation(.snappy(duration: 0.2)) { model.addingTo = model.addingTo == group.id ? nil : group.id }
+    }
+
+    @ViewBuilder private var renameField: some View {
+        if let project = group.projectId, let list = group.listId {
+            RenameField(name: group.title ?? "", font: Theme.nsFont(21, bold: true)) { name in model.renameProject(project, in: list, to: name) } done: {
+                renaming = false
+                if model.renaming == "project:" + project { model.renaming = nil }
+            }
+        } else if let list = headsList, let name = model.snap.list(list)?.name {
+            RenameField(name: name, font: Theme.nsFont(15, bold: true)) { model.renameList(list, to: $0) } done: { renaming = false }
         }
     }
 
@@ -535,11 +563,18 @@ struct AddUnder: View {
             Image(systemName: "plus").font(.system(size: 11)).foregroundStyle(Theme.faint).frame(width: 17)
             PlainField(text: $text, placeholder: "new task", name: "under", autofocus: true, onSubmit: add,
                        onEscape: { close(leave: true) }, onTab: { true },
-                       onEnd: { if text.trimmingCharacters(in: .whitespaces).isEmpty { close(leave: false) } })
+                       onEnd: { if text.trimmingCharacters(in: .whitespaces).isEmpty { close(leave: false) } },
+                       marks: marks)
                 .frame(height: 20)
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 10)
+    }
+
+    /// What quick add has read in what's typed, shaded.
+    private var marks: [NSRange] {
+        guard !text.isEmpty, !text.hasPrefix("/") else { return [] }
+        return Quick.marks(in: text, read: Quick.parse(text, lists: model.snap.lists, weekStart: model.snap.weekStart))
     }
 
     private func add() {

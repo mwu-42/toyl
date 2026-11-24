@@ -186,6 +186,10 @@ enum KeysTry {
             check("space again hides it", model.showInspector == shown)
 
             // The + line under a list's heading.
+            if !model.snap.lists.contains(where: { !$0.isSpecial && !$0.archived }) {
+                _ = model.newList("school", rename: false, navigate: false)
+                spin(0.3)
+            }
             if let group = model.groups.first(where: { $0.listId != nil && $0.listId != ListModel.inbox }), let list = group.listId {
                 withAnimation { model.addingTo = group.id }
                 spin(0.5)
@@ -322,7 +326,218 @@ enum KeysTry {
             check("…named", model.snap.lists.contains { $0.name == "books" })
 
             reordering()
+            shorthand()
+            steady()
             return finish()
+        }
+
+        /// TickTick's shorthand for days, and what's shaded as it's typed.
+        func shorthand() {
+            let lists = model.snap.lists
+            let week = model.snap.weekStart
+            func read(_ line: String) -> Quick { Quick.parse(line, lists: lists, weekStart: week) }
+            func same(_ short: String, _ long: String) -> Bool {
+                let a = read("pay rent " + short), b = read("pay rent " + long)
+                return a.due != nil && a.due == b.due && a.time == b.time && a.title == "pay rent"
+            }
+            let today = Day.today()
+            check("td: today", read("pay rent td").due == today && read("pay rent td").title == "pay rent", "\(read("pay rent td"))")
+            check("tdy, eod: today", same("tdy", "today") && same("eod", "today"))
+            check("tmr, 2moro: tomorrow", same("tmr", "tomorrow") && same("2moro", "tomorrow"))
+            check("yd: yesterday", read("send report yd").due == Day.adding(-1, to: today) && read("send report yd").title == "send report",
+                  "\(read("send report yd"))")
+            check("yesterday 3pm", read("call back yesterday 3pm").due == Day.adding(-1, to: today) && read("call back yesterday 3pm").time == "15:00")
+            check("nw, nxt wk: next week", same("nw", "next week") && same("nxt wk", "next week"))
+            check("nm: next month", same("nm", "next month"))
+            check("eow, eom: the end of the week, the month", same("eow", "by end of the week") && same("eom", "by end of the month"))
+            check("wknd: the weekend", same("wknd", "weekend"))
+            check("nxt fri", same("nxt fri", "next fri"))
+            check("in 3d, in 2w, in 3mo", same("in 3d", "in 3 days") && same("in 2w", "in 2 weeks") && same("in 3mo", "in 3 months"))
+            check("td 5pm", read("gym td 5pm").due == today && read("gym td 5pm").time == "17:00")
+            check("TD Bank, NW corner: as typed", read("TD Bank statement").due == nil && read("NW corner shelf").due == nil
+                  && read("TD Bank statement").title == "TD Bank statement")
+            check("words with td inside stay", read("std form").due == nil && read("tdx").due == nil && read("#td").due == nil)
+
+            let line = "buy milk tmr #shop"
+            let marks = Quick.marks(in: line, read: read(line))
+            check("what's read is shaded, as one", marks == [NSRange(location: 9, length: 9)], "\(marks)")
+            let late = "essay fri 5pm // the outline"
+            check("…not the title, not the notes", Quick.marks(in: late, read: read(late)) == [NSRange(location: 6, length: 7)],
+                  "\(Quick.marks(in: late, read: read(late)))")
+            check("…and nothing when nothing's read", Quick.marks(in: "TD bank", read: read("TD bank")).isEmpty)
+
+            // Typed into quick add, the shading's in the words.
+            model.place = .inbox
+            spin(0.3)
+            enter()
+            type("buy milk td 5pm #home")
+            spin(0.3)
+            picture("shading")
+            let storage = (field("quick")?.currentEditor() as? NSTextView)?.textStorage
+            let shaded = storage.map { $0.length >= 21 ? $0.attribute(.backgroundColor, at: 9, effectiveRange: nil) != nil && $0.attribute(.backgroundColor, at: 2, effectiveRange: nil) == nil : false } ?? false
+            check("typing td shades it in quick add", shaded)
+            escape()
+            escape()
+        }
+
+        // MARK: changing words in place
+
+        /// With `TOYL_PICTURES` set to a folder, the window drawn there as `name`.png.
+        func picture(_ name: String) {
+            guard let folder = ProcessInfo.processInfo.environment["TOYL_PICTURES"], let rep = shot() else { return }
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: folder).appendingPathComponent(name + ".png"))
+        }
+
+        /// The window drawn, as pixels.
+        func shot() -> NSBitmapImageRep? {
+            guard let view = window.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+            view.cacheDisplay(in: view.bounds, to: rep)
+            return rep
+        }
+
+        /// The dark pixels in `rect` (points, from the window's top-left): their bounds, in points.
+        func ink(_ rep: NSBitmapImageRep, in rect: NSRect) -> NSRect? {
+            guard let data = rep.bitmapData, let view = window.contentView else { return nil }
+            let scale = CGFloat(rep.pixelsWide) / view.bounds.width
+            let step = rep.bitsPerPixel / 8
+            var minX = Int.max, minY = Int.max, maxX = -1, maxY = -1
+            let x0 = max(0, Int(rect.minX * scale)), x1 = min(rep.pixelsWide, Int(rect.maxX * scale))
+            let y0 = max(0, Int(rect.minY * scale)), y1 = min(rep.pixelsHigh, Int(rect.maxY * scale))
+            guard x0 < x1, y0 < y1 else { return nil }
+            for y in y0..<y1 {
+                for x in x0..<x1 {
+                    let p = data + y * rep.bytesPerRow + x * step
+                    if (Int(p[0]) + Int(p[1]) + Int(p[2])) / 3 < 110 {
+                        minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y)
+                    }
+                }
+            }
+            guard maxX >= 0 else { return nil }
+            return NSRect(x: CGFloat(minX) / scale, y: CGFloat(minY) / scale, width: CGFloat(maxX - minX + 1) / scale, height: CGFloat(maxY - minY + 1) / scale)
+        }
+
+        /// The rows of pixels outside `band` (points, from the top) that differ between two shots.
+        func moved(_ a: NSBitmapImageRep, _ b: NSBitmapImageRep, outside band: ClosedRange<CGFloat>) -> (count: Int, rows: String) {
+            guard let da = a.bitmapData, let db = b.bitmapData, a.bytesPerRow == b.bytesPerRow, a.pixelsHigh == b.pixelsHigh,
+                  let view = window.contentView else { return (-1, "") }
+            let scale = CGFloat(a.pixelsWide) / view.bounds.width
+            var count = 0
+            var rows: [String] = []
+            for y in 0..<a.pixelsHigh where !band.contains(CGFloat(y) / scale) {
+                if memcmp(da + y * a.bytesPerRow, db + y * b.bytesPerRow, a.bytesPerRow) != 0 {
+                    count += 1
+                    // Where in the row: the first and last pixel that differ.
+                    let step = a.bitsPerPixel / 8
+                    let xs = (0..<a.pixelsWide).filter { memcmp(da + y * a.bytesPerRow + $0 * step, db + y * b.bytesPerRow + $0 * step, step) != 0 }
+                    rows.append("y\(CGFloat(y) / scale) x\(CGFloat(xs.first ?? 0) / scale)-\(CGFloat(xs.last ?? 0) / scale)")
+                }
+            }
+            return (count, rows.prefix(8).joined(separator: " "))
+        }
+
+        /// Starting to change some words moves nothing: no row outside their line changes, and
+        /// the words themselves stay where they were.
+        func steady(_ what: String, field name: String, start: () -> Void, stop: () -> Void) {
+            spin(0.3)
+            guard let before = shot() else { return check(what, false, "no picture") }
+            start()
+            spin(0.5)
+            guard let editor = field(name), let view = window.contentView else {
+                stop()
+                return check(what, false, "no field")
+            }
+            var frame = editor.convert(editor.bounds, to: view)
+            if !view.isFlipped { frame.origin.y = view.bounds.height - frame.maxY }
+            guard let after = shot() else { return check(what, false, "no picture") }
+            picture(name + "-" + what.prefix(20).replacingOccurrences(of: " ", with: "-"))
+            let (rows, which) = moved(before, after, outside: (frame.minY - 3)...(frame.maxY + 3))
+            // The first letters (the caret and a selection are further on, or pale).
+            let start = NSRect(x: frame.minX - 4, y: frame.minY - 4, width: 22, height: frame.height + 8)
+            let was = ink(before, in: start), now = ink(after, in: start)
+            // (A pale name, a group's, isn't ink before it's changed: only its rows count.)
+            let still = was == nil || (now != nil && abs(was!.minY - now!.minY) <= 0.5 && abs(was!.maxY - now!.maxY) <= 0.5 && abs(was!.minX - now!.minX) <= 0.5)
+            check(what, rows == 0 && still, "field \(frame) rows moved \(rows) \(which), words \(String(describing: was)) → \(String(describing: now))")
+            stop()
+            spin(0.4)
+        }
+
+        func steady() {
+            // A running timer's ring ticks in the sidebar: not what's checked.
+            for timer in model.timers.timers { model.timers.stop(timer.id) }
+            model.place = .anytime
+            model.selection = []
+            spin(0.4)
+            if let first = model.visible.first {
+                model.select(first.id)
+                steady("double-clicking a title moves nothing", field: "title", start: { model.editing = first.id }, stop: { escape() })
+            }
+            if let list = model.snap.lists.first(where: { $0.name == "books" }) {
+                steady("renaming a list in the sidebar moves nothing", field: "rename", start: { model.renaming = "list:" + list.id }, stop: { escape() })
+            }
+            if let group = model.snap.groups.first {
+                steady("renaming a group moves nothing", field: "rename", start: { model.renaming = "group:" + group.id }, stop: { escape() })
+            }
+            if let list = model.snap.lists.first(where: { $0.name == "order" }), let project = model.snap.list(list.id)?.projects.first {
+                model.place = .list(list.id)
+                spin(0.4)
+                steady("renaming a project's heading moves nothing", field: "rename",
+                       start: {
+                           model.renaming = "project:" + project.id
+                           spin(0.4)
+                           // On the heading's line, well right of its name.
+                           if let editor = field("rename") {
+                               headingPoint = editor.convert(NSPoint(x: editor.bounds.minX + 300, y: editor.bounds.midY), to: nil)
+                               headingName = editor.convert(NSPoint(x: editor.bounds.minX + 8, y: editor.bounds.midY), to: nil)
+                           }
+                       }, stop: { escape() })
+            }
+            headingClick()
+        }
+
+        var headingPoint: NSPoint?
+        var headingName: NSPoint?
+
+        /// A click on a list's heading line opens the line to add under it.
+        func headingClick() {
+            guard let list = model.snap.lists.first(where: { $0.name == "order" }), let project = model.snap.list(list.id)?.projects.first else { return }
+            model.place = .list(list.id)
+            model.addingTo = nil
+            spin(0.4)
+            guard let line = headingPoint, let name = headingName else { return check("a click on a heading's line adds under it", false, "heading not found") }
+            func click(_ count: Int, at point: NSPoint) {
+                for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                    if let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                      windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: count, pressure: 1) {
+                        window.sendEvent(event)
+                    }
+                }
+            }
+            // Clicks only reach a window that's in: this one is, far off screen and see-through.
+            window.alphaValue = 0
+            window.orderFrontRegardless()
+            spin(0.3)
+            click(1, at: line)
+            spin(0.6)
+            let group = model.groups.first { $0.projectId == project.id }
+            check("a click on a heading's line adds under it", model.addingTo != nil && model.addingTo == group?.id && field("under")?.hasKeys == true,
+                  "\(String(describing: model.addingTo)) \(String(describing: group?.id))")
+            escape()
+            spin(0.3)
+            check("…Escape puts it away", model.addingTo == nil)
+            click(1, at: name)
+            spin(0.05)
+            click(2, at: name)
+            spin(0.8)
+            check("a double-click on the heading's name changes it, adding nothing", field("rename")?.hasKeys == true && model.addingTo == nil,
+                  "\(String(describing: model.addingTo)) \(typing)")
+            escape()
+            spin(0.3)
+            click(1, at: name)
+            spin(1.0)
+            check("…a single click on the name adds", model.addingTo == group?.id, "\(String(describing: model.addingTo))")
+            escape()
+            spin(0.3)
+            window.orderOut(nil)
         }
 
         /// What a drop does (the drags themselves can't be made off screen): tasks, lists, groups,

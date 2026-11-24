@@ -102,13 +102,11 @@ struct BigTimer: View {
                     .foregroundStyle(timer.isRunning ? Theme.ink : Theme.secondary)
                 HStack(spacing: 6) {
                     // Its name: double-click to change it.
-                    if renaming {
-                        RenameField(name: timer.label, font: Theme.nsFont(15)) { model.renameTimer(timer.id, to: $0) } done: { renaming = false }
-                            .frame(maxWidth: 260)
-                    } else {
-                        Text(model.display(timer.label)).font(Theme.font(15))
-                            .onTapGesture(count: 2) { renaming = true }
-                    }
+                    Text(model.display(timer.label)).font(Theme.font(15))
+                        .onTapGesture(count: 2) { renaming = true }
+                        .changedInPlace(renaming, room: 260) {
+                            RenameField(name: timer.label, font: Theme.nsFont(15)) { model.renameTimer(timer.id, to: $0) } done: { renaming = false }
+                        }
                     if timer.taskId != nil { Image(systemName: "checkmark.circle").font(.system(size: 10)).foregroundStyle(Theme.faint) }
                     if !timer.isRunning { Text("paused").font(Theme.meta).foregroundStyle(Theme.faint) }
                     if timer.mirroredByOyl { Text("on oyl's notch").font(Theme.meta).foregroundStyle(Theme.faint) }

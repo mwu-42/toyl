@@ -287,17 +287,17 @@ struct GroupHeader: View {
     var body: some View {
         let folded = model.collapsedGroups.contains(group.id)
         HStack(spacing: 5) {
-            if model.renaming == "group:" + group.id {
-                RenameField(name: group.name) { model.renameGroup(group.id, to: $0) } done: { model.renaming = nil }
-            } else {
-                Text(model.display(group.name))
-                    .font(Theme.font(12.5))
-                    .foregroundStyle(lit ? Theme.accent : Theme.faint)
-                Image(systemName: folded ? "chevron.right" : "chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(Theme.faint)
-                    .opacity(hovering || folded ? 1 : 0)
-            }
+            let renaming = model.renaming == "group:" + group.id
+            Text(model.display(group.name))
+                .font(Theme.font(12.5))
+                .foregroundStyle(lit ? Theme.accent : Theme.faint)
+                .changedInPlace(renaming) {
+                    RenameField(name: group.name, font: Theme.nsFont(12.5)) { model.renameGroup(group.id, to: $0) } done: { model.renaming = nil }
+                }
+            Image(systemName: folded ? "chevron.right" : "chevron.down")
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(Theme.faint)
+                .opacity((hovering || folded) && !renaming ? 1 : 0)
             Spacer()
         }
         .padding(.leading, 10)
@@ -348,18 +348,11 @@ struct SidebarRow: View {
         let shown = count ?? model.count(place)
         HStack(spacing: 9) {
             icon.frame(width: 18)
-            if case .list(let id) = place, model.renaming == "list:" + id {
-                RenameField(name: model.snap.list(id)?.name ?? "") { model.renameList(id, to: $0) } done: { model.renaming = nil }
-            } else if case .filter(let id) = place, model.renaming == "filter:" + id {
-                RenameField(name: model.snap.filters.first { $0.id == id }?.name ?? "") { model.renameFilter(id, to: $0) } done: { model.renaming = nil }
-            } else if case .tag(let tag) = place, model.renaming == "tag:" + tag {
-                RenameField(name: tag) { model.renameTag(tag, to: $0) } done: { model.renaming = nil }
-            } else {
-                Text(name)
-                    .font(Theme.sidebarItem)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
+            Text(name)
+                .font(Theme.sidebarItem)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .changedInPlace(renamingThis) { renameField }
             Spacer(minLength: 4)
             if place == .timers, let first = model.timers.timers.first {
                 TimelineView(.periodic(from: .now, by: first.isRunning ? 1 : 60)) { context in
@@ -500,6 +493,29 @@ struct SidebarRow: View {
         }
     }
 
+    /// Its name's being changed (double-clicked, or just made).
+    private var renamingThis: Bool {
+        switch place {
+        case .list(let id): return model.renaming == "list:" + id
+        case .filter(let id): return model.renaming == "filter:" + id
+        case .tag(let tag): return model.renaming == "tag:" + tag
+        default: return false
+        }
+    }
+
+    @ViewBuilder private var renameField: some View {
+        switch place {
+        case .list(let id):
+            RenameField(name: model.snap.list(id)?.name ?? "") { model.renameList(id, to: $0) } done: { model.renaming = nil }
+        case .filter(let id):
+            RenameField(name: model.snap.filters.first { $0.id == id }?.name ?? "") { model.renameFilter(id, to: $0) } done: { model.renaming = nil }
+        case .tag(let tag):
+            RenameField(name: tag) { model.renameTag(tag, to: $0) } done: { model.renaming = nil }
+        default:
+            EmptyView()
+        }
+    }
+
     /// What the row says: a list without the emoji its icon shows, a tag without the "#" its
     /// icon shows.
     private var name: String {
@@ -594,7 +610,6 @@ struct RenameField: View {
         PlainField(text: $text, font: font, name: "rename", autofocus: true, selectAll: true,
                    onSubmit: { finish(keep: true, leave: true) }, onEscape: { finish(keep: false, leave: true) },
                    onTab: { true }, onEnd: { finish(keep: true, leave: false) })
-            .frame(height: ceil(font.pointSize * 1.3))
             .onDisappear { finish(keep: true, leave: false) }
     }
 
