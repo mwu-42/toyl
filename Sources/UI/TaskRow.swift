@@ -153,20 +153,6 @@ struct TaskRow: View {
     }
 }
 
-/// The timers a task can have: its own length, the usual lengths, or a stopwatch.
-struct TimerMenu: View {
-    @ObservedObject var model: AppModel
-    let task: TaskModel
-
-    var body: some View {
-        ForEach(TimerEngine.presets, id: \.self) { minutes in
-            Button(Format.minutes(minutes)) { model.timer(task, minutes: Double(minutes)) }
-        }
-        Divider()
-        Button("stopwatch") { model.timer(task, stopwatch: true) }
-    }
-}
-
 /// A running timer on its task's row: its ring and time; click to pause or carry on.
 struct TimerChip: View {
     @ObservedObject var model: AppModel
@@ -204,73 +190,17 @@ struct TaskMenu: View {
     @ObservedObject var model: AppModel
     let ids: [String]
 
+    /// Just three: add a subtask (to one task, not done), duplicate, delete. The rest is in the
+    /// menu bar, the description, and swipes.
     var body: some View {
         let tasks = ids.compactMap { model.snap.task($0) }
-        let today = Day.today()
-        let one = tasks.count == 1 ? tasks[0] : nil
-        Button(tasks.allSatisfy(\.done) ? "uncheck" : "check off") { model.complete(ids) }
-        Divider()
-        Button("today") { model.setDue(today, for: ids) }
-        Button("tomorrow") { model.setDue(Day.adding(1, to: today), for: ids) }
-        Button("this weekend") { model.setDue(TodQuick.read("sat", now: Date(), weekStart: model.snap.weekStart).due, for: ids) }
-        Button("next week") { model.setDue(TodQuick.read("next week", now: Date(), weekStart: model.snap.weekStart).due, for: ids) }
-        Button("no date") { model.setDue(nil, for: ids) }
-        Divider()
-        if let one {
-            Button(model.isInProgress(one) ? "not in progress" : "in progress") { model.toggleInProgress(one.id) }
-        }
-        Button(tasks.allSatisfy(\.pinned) ? "unpin" : "pin to the top") { model.togglePin(ids) }
-        Button(tasks.allSatisfy(\.someday) ? "out of ideas" : "to ideas") { model.toggleSomeday(ids) }
-        if let one, !one.done {
-            Button(one.subtasks.isEmpty ? "add a sublist" : "add to its sublist") {
+        if tasks.count == 1, let one = tasks.first, !one.done {
+            Button("add subtask") {
                 model.selection = [one.id]
                 withAnimation(.snappy(duration: 0.2)) { model.addingSublist = one.id }
             }
         }
-        if let one, !one.subtasks.isEmpty, !one.isIdea {
-            Button("turn into a project") { model.makeProject(from: one.id) }
-        }
-        if let one, let list = model.snap.list(one.listId) {
-            Menu("project") {
-                Button(one.project == nil ? "✓ none" : "none") { model.setProject(nil, list: list.id, for: ids) }
-                ForEach(list.projects) { project in
-                    Button((one.project == project.id ? "✓ " : "") + model.display(project.name)) { model.setProject(project.id, list: list.id, for: ids) }
-                }
-                Divider()
-                Button("new project…") {
-                    let made = model.newProject(in: list.id)
-                    model.setProject(made, list: list.id, for: ids)
-                }
-            }
-        }
-        Menu("move to") {
-            ForEach(model.snap.sidebarOrder) { list in
-                Button(model.display(list.displayName)) { model.move(ids, to: list.id) }
-            }
-        }
-        if !model.snap.tags.isEmpty {
-            Menu("tags") {
-                ForEach(model.snap.tags.prefix(30), id: \.name) { tag in
-                    Button((tasks.allSatisfy { $0.hasTag(tag.name) } ? "✓ #" : "#") + tag.name) { model.toggleTag(tag.name, for: ids) }
-                }
-            }
-        }
-        if let one {
-            Divider()
-            Menu("timer") { TimerMenu(model: model, task: one) }
-            if one.event == nil {
-                Button("add to google calendar…") { model.addToCalendar(one) }
-            } else {
-                Button("take it off google calendar") { model.calendar.unblock(one) }
-            }
-            if model.calendar.connected {
-                Button(one.duration == nil ? "find time for it (set how long it takes first)" : "find time for it") { model.calendar.schedule(one) }
-                    .disabled(one.duration == nil)
-            }
-            if OnDevice.isAvailable { Button("break it into a sublist") { model.breakDown(one) } }
-        }
-        Divider()
-        Button("copy for an agent") { model.copyForAgent(ids) }
+        Button(ids.count > 1 ? "duplicate \(ids.count)" : "duplicate") { model.duplicate(ids) }
         Button(ids.count > 1 ? "delete \(ids.count)" : "delete", role: .destructive) {
             model.selection = Set(ids)
             model.deleteSelected()
@@ -455,36 +385,61 @@ struct TitleEditor: View {
     @Local private var finished = false
     /// Where the click that opened it was, for the caret.
     @Local private var caret: CGPoint?
+    /// "/" typed: days and what goes on a task, in a menu under it.
+    @Local private var slash = SlashPick(editing: true)
 
     init(model: AppModel, task: TaskModel) {
         self.model = model
         self.task = task
         _draft = Local(initialValue: task.title)
         _caret = Local(initialValue: model.editingAt)
+        _slash = Local(initialValue: SlashPick(weekStart: model.snap.weekStart, editing: true))
     }
 
     var body: some View {
+        let menu = slash.menu(draft)
         PlainField(text: $draft, font: Theme.nsFont(16), name: "title", autofocus: true,
-                   onSubmit: { finish(keep: true, leave: true) },
-                   onEscape: { finish(keep: false, leave: true) },
-                   onTab: { true },
-                   onUp: { finish(keep: true, leave: true); model.moveSelection(-1); return true },
-                   onDown: { finish(keep: true, leave: true); model.moveSelection(1); return true },
+                   onSubmit: { if !slash.take(in: &draft) { finish(keep: true, leave: true) } },
+                   onEscape: { if !slash.close(draft) { finish(keep: false, leave: true) } },
+                   onTab: { _ = slash.take(in: &draft); return true },
+                   onUp: {
+                       if slash.move(-1, in: draft) { return true }
+                       finish(keep: true, leave: true)
+                       model.moveSelection(-1)
+                       return true
+                   },
+                   onDown: {
+                       if slash.move(1, in: draft) { return true }
+                       finish(keep: true, leave: true)
+                       model.moveSelection(1)
+                       return true
+                   },
                    onEnd: { finish(keep: true, leave: false) },
+                   marks: Quick.edit(draft, weekStart: model.snap.weekStart).marks,
                    caretAt: caret)
+            .overlay(alignment: .topLeading) {
+                if let menu {
+                    Floating(size: SlashMenu.size(menu.words.count)) {
+                        SlashMenu(words: menu.words, picked: slash.picked(in: menu.words.count), pick: { slash.index = $0 }) { choice in
+                            _ = slash.take(choice, in: &draft)
+                            InkField.named("title")?.takeKeys()
+                        }
+                    }
+                    // Just under the title.
+                    .offset(y: 24)
+                }
+            }
+            .onChange(of: draft) { _, now in slash.typed(now) }
             .onAppear { model.editingAt = nil }
             .onDisappear { finish(keep: true, leave: false) }
     }
 
+    /// Keeps what was typed (unless it's Escape): the words, and what slash words in it say (a
+    /// day, /pin, /idea, a timer), which come out of the title.
     private func finish(keep: Bool, leave: Bool) {
         guard !finished else { return }
         finished = true
-        let title = draft.trimmingCharacters(in: .whitespaces)
-        if keep, !title.isEmpty, let current = model.snap.task(task.id), title != current.title {
-            var p = TaskPatch()
-            p.title = title
-            model.store.update(task.id, "rename", p)
-        }
+        if keep { model.retitle(task.id, to: draft) }
         if leave { model.leaveTyping() }
         if model.editing == task.id { model.editing = nil }
     }

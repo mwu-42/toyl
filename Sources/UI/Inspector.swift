@@ -50,6 +50,7 @@ struct TaskDetail: View {
     @FocusState private var notesFocused: Bool
     /// The title or the day being typed in: a change from elsewhere doesn't overwrite it.
     @Local private var typingTitle = false
+    @Local private var slash = SlashPick(editing: true)
     @Local private var typingDue = false
 
     /// One tap each.
@@ -70,11 +71,29 @@ struct TaskDetail: View {
                         .padding(.top, 3)
                         .onTapGesture { model.complete([task.id]) }
                     PlainField(text: $title, placeholder: "title", font: Theme.nsFont(21, bold: true), name: "detail-title",
-                               onSubmit: { commitTitle(); model.leaveTyping() },
-                               onEscape: { title = task.title; model.leaveTyping() },
+                               onSubmit: { if !slash.take(in: &title) { commitTitle(); model.leaveTyping() } },
+                               onEscape: { if !slash.close(title) { title = task.title; model.leaveTyping() } },
+                               onTab: { _ = slash.take(in: &title); return true },
+                               onUp: { slash.move(-1, in: title) },
+                               onDown: { slash.move(1, in: title) },
                                onBegin: { typingTitle = true },
-                               onEnd: { typingTitle = false; commitTitle() })
+                               onEnd: { typingTitle = false; commitTitle() },
+                               marks: typingTitle ? Quick.edit(title, weekStart: model.snap.weekStart).marks : [])
                         .frame(height: 26)
+                        // "/": days and what goes on a task, in a menu under it.
+                        .overlay(alignment: .topLeading) {
+                            if typingTitle, let menu = slash.menu(title) {
+                                Floating(size: SlashMenu.size(menu.words.count)) {
+                                    SlashMenu(words: menu.words, picked: slash.picked(in: menu.words.count), pick: { slash.index = $0 }) { choice in
+                                        _ = slash.take(choice, in: &title)
+                                        InkField.named("detail-title")?.takeKeys()
+                                    }
+                                }
+                                .offset(y: 30)
+                            }
+                        }
+                        .onChange(of: title) { _, now in slash.typed(now) }
+                        .onAppear { slash.weekStart = model.snap.weekStart }
                 }
                 .padding(.top, 34)
                 when(now: now)
@@ -421,12 +440,12 @@ struct TaskDetail: View {
 
     // MARK: saving
 
+    /// What's typed, kept: slash words in it (a day, /pin, /idea, a timer) do that, and come out.
     private func commitTitle() {
         let text = title.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty, text != task.title else { if text.isEmpty { title = task.title }; return }
-        var p = TaskPatch()
-        p.title = text
-        model.store.update(task.id, "rename", p)
+        guard !text.isEmpty else { title = task.title; return }
+        guard text != task.title else { return }
+        title = model.retitle(task.id, to: text) ?? task.title
     }
 
     private func commitNotes() {

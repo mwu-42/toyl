@@ -683,6 +683,45 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// A copy of each, just under it (the copies selected). One undo step.
+    func duplicate(_ ids: [String]) {
+        let made = ids.filter { snap.task($0) != nil }.map { ($0, UID.make()) }
+        guard !made.isEmpty else { return }
+        let now = Date()
+        withAnimation(.snappy(duration: 0.25)) {
+            store.change(made.count > 1 ? "duplicate \(made.count)" : "duplicate") { doc in
+                for (id, copy) in made { doc.duplicateTask(id, as: copy, now: now) }
+            }
+        }
+        selection = Set(made.map(\.1))
+        anchor = made.last?.1
+    }
+
+    /// A title typed over a task's (in its row, or its description): its words, and what slash
+    /// words in it say (a day, /pin, /idea, a timer), which come out of the title. Nothing but
+    /// slash words keeps the title it had. The title it ends with.
+    @discardableResult
+    func retitle(_ id: String, to typed: String) -> String? {
+        guard let current = snap.task(id) else { return nil }
+        let edit = Quick.edit(typed, weekStart: snap.weekStart)
+        let title = edit.title.trimmingCharacters(in: .whitespaces)
+        var p = TaskPatch()
+        if !title.isEmpty, title != current.title { p.title = title }
+        if let due = edit.due {
+            p.due = .some(due)
+            p.time = .some(edit.time)
+        }
+        if edit.pinned { p.pinned = true }
+        if edit.someday { p.someday = true }
+        if !p.isEmpty {
+            withAnimation(.easeInOut(duration: 0.22)) { store.update(id, edit.says ? "change" : "rename", p) }
+        }
+        if let ask = edit.timer, let task = snap.task(id) {
+            timer(task, minutes: ask.minutes.map(Double.init), stopwatch: ask.stopwatch)
+        }
+        return title.isEmpty ? current.title : title
+    }
+
     /// Starts a timer on a task: a countdown of `minutes` (its own length, else the usual), or a stopwatch.
     func timer(_ task: TaskModel, minutes: Double? = nil, stopwatch: Bool = false) {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { timers.start(task: task, minutes: minutes, stopwatch: stopwatch) }
@@ -1245,8 +1284,9 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// A scroll from the trackpad: whether it was a swipe on a task (and so not a scroll).
-    private func swiped(_ event: NSEvent) -> Bool {
+    /// A scroll from the trackpad: whether it was a swipe on a task (and so not a scroll). The
+    /// window's scroll watcher's (and `__keys`').
+    func swiped(_ event: NSEvent) -> Bool {
         guard event.hasPreciseScrollingDeltas else { return false }
         if event.phase.isEmpty, !event.momentumPhase.isEmpty {
             if event.momentumPhase.contains(.ended) || event.momentumPhase.contains(.cancelled) { defer { swallowMomentum = false }; return swallowMomentum }
@@ -1255,8 +1295,9 @@ final class AppModel: ObservableObject {
         if event.phase.contains(.began) || event.phase.contains(.mayBegin) {
             swallowMomentum = false
             // Only a task that's really there under the pointer (not one just checked off, or from
-            // the place before, whose row went without saying the pointer left it).
-            if let id = hoveredTask, editing == nil, !completing.contains(id), visible.contains(where: { $0.id == id }) {
+            // the place before, whose row went without saying the pointer left it). A title being
+            // typed doesn't stop it: what's typed is kept.
+            if let id = hoveredTask, !completing.contains(id), visible.contains(where: { $0.id == id }) {
                 swipeTrack = (id, 0, 0, nil)
             } else {
                 swipeTrack = nil

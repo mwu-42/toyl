@@ -148,7 +148,14 @@ It's the v3 format Oyl's to-do store reads, grown:
 - **Full screen survives a quit** (`AppDelegate.reopenFullScreen`): `window.fullScreen`, `window.display` and
   `window.normalFrame` are kept; it goes back at once on another display (handing the keys back), else when toyl
   is next made active. Never toggle full screen while testing.
-- **A row's sublist "add" line is hidden** until asked for (right-click › add to its sublist).
+- **A row's sublist "add" line is hidden** until asked for (right-click › add subtask).
+- **A task's right-click menu has three things**: add subtask, duplicate (`AppModel.duplicate`, `Doc.duplicateTask`:
+  a copy just under it, without its links or time spent), delete. Don't add more there: the rest lives in the menu
+  bar, the description and swipes.
+- **Swipes work while a title's being typed** (`AppModel.swiped` doesn't check `editing`).
+- **Slash words in a title being changed** (`Quick.edit`, `AppModel.retitle`, in the row and the description): a
+  day, /pin, /idea, /timer do that and come out of the title; nothing else in a title is read. The menu there
+  (`SlashPick(editing: true)`) offers days and task words only.
 - **Plain words** in what toyl says: no "puts it back"-style phrasing ("deleted", "restored").
 - **The last action** (`banner`) shows at the top right under the title and fades after a few seconds.
 - **Autosort everything** (`Actions.sortInbox`, the 🪄 icon in all's and the inbox's header, ⌥⌘A, `toyl autosort --all`): a named

@@ -267,6 +267,30 @@ struct Doc {
         return id
     }
 
+    /// A copy of a task, just under it in its list: its words, day, list, project, tags, notes and
+    /// sublist, not done, with none of its links (a calendar event, an email, Canvas) or time spent.
+    @discardableResult
+    mutating func duplicateTask(_ id: String, as newId: String, now: Date = Date()) -> Bool {
+        guard var entry = self[task: id] else { return false }
+        let ms = Moment.ms(now)
+        let section = entry["columnId"] as? String ?? ""
+        let order = (entry["order"] as? NSNumber)?.doubleValue ?? 0
+        let next = taskEntries.filter { $0.value["columnId"] as? String == section }
+            .compactMap { ($0.value["order"] as? NSNumber)?.doubleValue }.filter { $0 > order }.min()
+        entry["id"] = newId
+        entry["order"] = Self.number(next.map { (order + $0) / 2 } ?? order + 1)
+        entry["done"] = false
+        entry["doneAt"] = NSNull()
+        entry["createdAt"] = ms
+        entry["updatedAt"] = ms
+        for key in ["event", "email", "canvas", "spent", "source"] { entry.removeValue(forKey: key) }
+        if let items = entry["subtasks"] as? [Any] {
+            entry["subtasks"] = items.compactMap(Subtask.init(entry:)).map { Subtask(title: $0.title, done: $0.done).entry }
+        }
+        self[task: newId] = entry
+        return true
+    }
+
     mutating func updateTask(_ id: String, _ p: TaskPatch, now: Date = Date()) {
         guard var e = self[task: id] else { return }
         let before = e

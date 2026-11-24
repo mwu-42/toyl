@@ -526,6 +526,60 @@ extension Quick {
         return phrase
     }
 
+    /// What a title being changed says with slash words, and the title without them. Only slash
+    /// words are read (it's a title already: "meet at 5pm" keeps its 5pm): a day (`/nextfri`,
+    /// `/tmr 9am` no, `/fri5pm` yes), `/pin`, `/idea` (`/someday`, `/later`), `/timer 25m`,
+    /// `/stopwatch`. Anything else with a slash stays as typed.
+    struct Edit: Equatable {
+        var title: String
+        var due: String?
+        var time: String?
+        var pinned = false
+        var someday = false
+        var timer: TimerAsk?
+        /// The words read, to shade as they're typed.
+        var marks: [NSRange] = []
+        /// Something besides the words was said.
+        var says: Bool { due != nil || pinned || someday || timer != nil }
+    }
+
+    static func edit(_ title: String, now: Date = Date(), weekStart: Int = 1) -> Edit {
+        var out = Edit(title: title)
+        let ns = title as NSString
+        var taken: [NSRange] = []
+        for match in matchesOf(timerPattern, in: title) where out.timer == nil {
+            let stopwatch = ns.substring(with: match.range(at: 1)).lowercased() == "stopwatch"
+            var minutes: Int?
+            if match.range(at: 2).location != NSNotFound {
+                let amount = number(ns.substring(with: match.range(at: 2)))
+                minutes = max(minutesOf(ns.substring(with: match.range(at: 3)).lowercased().hasPrefix("h") ? amount * 60 : amount), 1)
+            }
+            out.timer = TimerAsk(minutes: stopwatch ? nil : minutes, stopwatch: stopwatch)
+            taken.append(match.range)
+        }
+        for match in matchesOf(slashWord, in: title) where !taken.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) {
+            let word = ns.substring(with: match.range(at: 1)).lowercased()
+            if word == "pin" {
+                out.pinned = true
+            } else if ["idea", "someday", "later"].contains(word) {
+                out.someday = true
+            } else if out.due == nil, let phrase = dayPhrase(word, now: now, weekStart: weekStart) {
+                let read = parse("x " + phrase, lists: [], now: now, weekStart: weekStart)
+                out.due = read.due
+                out.time = read.time
+            } else {
+                continue
+            }
+            taken.append(match.range)
+        }
+        guard !taken.isEmpty else { return out }
+        out.marks = taken.sorted { $0.location < $1.location }
+        var rest = title
+        for range in out.marks.reversed() { rest = (rest as NSString).replacingCharacters(in: range, with: " ") }
+        out.title = tidy(rest)
+        return out
+    }
+
     /// Days offered in the slash menu, in its order.
     static let dayWords = ["today", "tomorrow", "tonight", "yesterday", "mon", "tue", "wed", "thu", "fri", "sat", "sun",
                            "nextweek", "nextmon", "nexttue", "nextwed", "nextthu", "nextfri", "nextsat", "nextsun",
@@ -595,7 +649,7 @@ extension Quick {
     /// The slash word being typed at the end ("/", "/pro", "essay /ti"): where it is, and the
     /// words it could be, for the menu under the field. Nil once it's a whole word, or for a slash
     /// inside a word ("a/b", a link).
-    static func slashMenu(_ input: String, now: Date = Date(), weekStart: Int = 1) -> (range: Range<String.Index>, words: [SlashWord])? {
+    static func slashMenu(_ input: String, now: Date = Date(), weekStart: Int = 1, editing: Bool = false) -> (range: Range<String.Index>, words: [SlashWord])? {
         guard let slash = input.lastIndex(of: "/") else { return nil }
         let typed = input[input.index(after: slash)...]
         guard typed.allSatisfy(\.isLetter) else { return nil }
@@ -604,7 +658,8 @@ extension Quick {
         let key = typed.lowercased()
         // At the start, what a line makes, then days; after words, days first ("essay /nextfri").
         let days = daySlashWords(now: now, weekStart: weekStart)
-        let offered = before.allSatisfy(\.isWhitespace) ? lineWords + days : days + taskWords
+        // A title being changed: days and what goes on a task, wherever it's typed (it makes nothing else).
+        let offered = before.allSatisfy(\.isWhitespace) && !editing ? lineWords + days : days + taskWords
         let words = offered.filter { $0.word.hasPrefix(key) && $0.word != key }
         return words.isEmpty ? nil : (slash..<input.endIndex, words)
     }

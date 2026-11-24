@@ -38,6 +38,9 @@ open behind what you're doing (in front only if you were using toyl), never taki
   - in the sidebar: lists (drop one on a group to put it in, on "lists" to take it out), groups, saved filters, and the places themselves (⌘1–6 follow)
   - in the page: projects by their headings, lists by theirs in all · sublist items, within a task or onto another
 - ✏️ **click a task to change its title**: the caret goes right where you click (⌘-click or ⇧-click to select instead)
+  - `/` words work there too (with the same menu): `/nextfri`, `/tomorrow` set its day, `/pin`, `/idea`, `/timer 25m`. they come out of the title; nothing else in a title is read
+  - swipes still work while you type
+- 🖱 **right-click a task**: add subtask · duplicate (a copy just under it) · delete. everything else is in the menu bar, its description, and swipes
 - ✏️ **double-click any other name to change it**: a list (in the sidebar, its heading, or the big title), a project, a group, a filter,
   a tag (on every task that has it), a sublist item, a timer. Return keeps it, Escape doesn't. the words are changed right where they are: nothing moves or changes size.
 - 👆 **swipe a task** (two fingers on the trackpad, as in Mail; or a finger on the phone). it pulls freely, then harder and harder, like a rubber band
@@ -48,8 +51,8 @@ open behind what you're doing (in front only if you were using toyl), never taki
   - a list shows its loose tasks first, then each project under a big heading: click the heading's line to add straight into it
   - make one: "new project" at the bottom of a list, the list's menu, or a task's project in its description
   - drop a task on a project's heading to put it in; double-click the heading to rename it; right-click to delete it (its tasks stay)
-  - a task with a sublist can **turn into a project**: right-click › turn into a project (or "make it a project" by its sublist). each item becomes a task in it
-- ☑️ **sublists**: a task's sublist shows right under it. right-click › add to its sublist (or use its description) to add · ✨ "break it down" makes one with apple intelligence.
+  - a task with a sublist can **turn into a project**: "make it a project" by its sublist, in its description. each item becomes a task in it
+- ☑️ **sublists**: a task's sublist shows right under it. right-click › add subtask (or use its description) to add · ✨ "break it down" makes one with apple intelligence.
 - 💡 **ideas**: loose ideas (`?` first) and anything put off (`/idea`, or drag it onto ideas). it keeps its list.
 - ↩️ **the keys**: press Return anywhere to start a new task, or just start typing
   - Return adds it and stays for the next · Return with nothing typed, Escape or ↓ go back to the list
@@ -75,7 +78,7 @@ open behind what you're doing (in front only if you were using toyl), never taki
     - `/list groceries` a list · `/project final essay #cs` a project (in the list named, else the one you're in) · `/group school` a group of lists
     - `/filter #cs due:week` a saved filter · `/event lunch with sam fri noon` google calendar's form, filled in
     - alone (`/list`, `/project`), it's made ready for you to name
-- ⏱ **timers on any task** (a running one shows on its task, and in timers; nothing at the window's foot): swipe it softly left, right-click › timer for a length, or pick one in its details: 10m · 30m · 1h · 6h · 24h, or type one. time adds up on the task.
+- ⏱ **timers on any task** (a running one shows on its task, and in timers; nothing at the window's foot): swipe it softly left, type `/timer 25m` in its title, or pick one in its details: 10m · 30m · 1h · 6h · 24h, or type one. time adds up on the task.
 - 🔗 **links in notes are cards** in the details: the page's icon and title; click to open. rows stay plain.
 - ➕ **every list has its heading in all**, empty or not: click anywhere on a heading's line to add straight into it (a + shows as you point at it). double-click the name to rename it instead.
 - 🖥 **full screen stays full screen**: quit toyl in full screen (or update it) and it opens in full screen again, on the same display
@@ -111,7 +114,7 @@ alone, not in toyl's folder. (Not the keychain: it asked for permission again af
 - Shows events beside your tasks: the calendar panel, today, and the details pane's "still to come". It
   shows the calendars Google itself shows, minus the adopted treehacks and stanford feeds; choose
   others in settings.
-- **add to google calendar…** (⇧⌘G, or right-click a task) opens a form filled in from the task
+- **add to google calendar…** (⇧⌘G, or the task menu) opens a form filled in from the task
   and your rules. Nothing is added until nothing's missing, and what's still needed is said in
   plain words. Your rules (`CALENDAR.md`, also in `calendar-rules.json`):
   - Titles, descriptions and locations are lowercase. There are no em dashes, and no "#" in titles.

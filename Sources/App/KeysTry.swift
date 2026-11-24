@@ -626,6 +626,78 @@ enum KeysTry {
             }
             headingClick()
             taskClick()
+            editingWords()
+        }
+
+        /// While a title's being typed: swipes still work, and "/" words do what they say.
+        func editingWords() {
+            model.place = .inbox
+            model.selection = []
+            model.editing = nil
+            spin(0.4)
+            guard let first = model.visible.first else { return check("swipes while typing a title", false, "no task") }
+
+            // A swipe on the task whose title is being typed.
+            model.select(first.id)
+            model.editing = first.id
+            spin(0.4)
+            model.hoveredTask = first.id
+            func scroll(_ phase: Int64, _ dx: Int32) -> NSEvent? {
+                guard let made = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: 0, wheel2: dx, wheel3: 0) else { return nil }
+                made.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+                made.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
+                made.setIntegerValueField(.scrollWheelEventPointDeltaAxis2, value: Int64(dx))
+                return NSEvent(cgEvent: made)
+            }
+            var sideways = false
+            if let began = scroll(1, 0) { _ = model.swiped(began) }
+            for _ in 0..<3 { if let moved = scroll(2, 15), model.swiped(moved) { sideways = true } }
+            let pulled = model.swipe?.id == first.id
+            if let ended = scroll(4, 0) { _ = model.swiped(ended) }
+            spin(0.3)
+            check("a swipe works while its title's being typed", sideways && pulled, "sideways \(sideways) pulled \(pulled)")
+            escape()
+            spin(0.3)
+
+            // Slash words while changing a title.
+            let read = Quick.edit("essay draft /nextfri /pin")
+            check("in a title: /nextfri and /pin come out and say their thing", read.title == "essay draft" && read.due == Quick.parse("x next fri", lists: []).due
+                  && read.pinned && read.marks.count == 2, "\(read)")
+            check("…/timer 25m, /idea", Quick.edit("call /timer 25m").timer?.minutes == 25 && Quick.edit("call /timer 25m").title == "call"
+                  && Quick.edit("someday trip /idea").someday)
+            check("…but nothing else is read: a title keeps its 5pm, its #, its ~", Quick.edit("meet at 5pm #cs ~1h").title == "meet at 5pm #cs ~1h"
+                  && !Quick.edit("meet at 5pm #cs ~1h").says && Quick.edit("fix /etc/hosts").title == "fix /etc/hosts")
+            check("…and in its menu, days and what goes on a task, even first", Quick.slashMenu("/", editing: true)?.words.first?.word == "today"
+                  && Quick.slashMenu("/", editing: true)?.words.contains { $0.word == "list" } == false)
+            model.select(first.id)
+            model.editing = first.id
+            spin(0.4)
+            type(" /nextf")
+            enter()
+            check("typing a title: Return takes /nextfri from the menu", text("title") == first.title + " /nextfri ", "'\(text("title"))'")
+            type("/pi")
+            enter()
+            enter()
+            spin(0.3)
+            let changed = model.snap.task(first.id)
+            check("…and Return keeps it: due next friday, pinned, the title as it was", changed?.title == first.title
+                  && changed?.due == Quick.parse("x next fri", lists: []).due && changed?.pinned == true,
+                  "\(changed?.title ?? "") \(changed?.due ?? "-") \(changed?.pinned ?? false)")
+
+            // Duplicate, from the right-click menu.
+            let before = model.snap.tasks.count
+            model.duplicate([first.id])
+            spin(0.4)
+            let copies = model.snap.tasks.filter { $0.title == first.title }
+            let copy = copies.first { $0.id != first.id }
+            let order = model.visible.map(\.id)
+            check("duplicate: a copy, just under it, selected", model.snap.tasks.count == before + 1 && copy != nil
+                  && copy?.due == changed?.due && copy?.done == false
+                  && order.firstIndex(of: copy?.id ?? "-") == (order.firstIndex(of: first.id) ?? -9) + 1 && model.selection == [copy?.id ?? "-"],
+                  "\(order.firstIndex(of: copy?.id ?? "-") ?? -1) vs \(order.firstIndex(of: first.id) ?? -1)")
+            model.store.undoManager.undo()
+            spin(0.3)
+            check("…⌘z takes it back", model.snap.tasks.count == before)
         }
 
         /// A click on a task puts the caret in its title, where the click was.

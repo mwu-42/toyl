@@ -7,11 +7,13 @@ struct SlashPick: Equatable {
     var closedFor: String?
     /// The day weeks start on (for what "/nextfri" is).
     var weekStart = 1
+    /// A title being changed: only days and what goes on a task.
+    var editing = false
 
     /// The menu for what's typed, if one shows.
     func menu(_ text: String) -> (range: Range<String.Index>, words: [Quick.SlashWord])? {
         guard closedFor != text else { return nil }
-        return Quick.slashMenu(text, weekStart: weekStart)
+        return Quick.slashMenu(text, weekStart: weekStart, editing: editing)
     }
 
     /// The picked word, kept within the menu.
