@@ -84,6 +84,8 @@ struct Quick: Equatable {
         q.repeats = takeRepeat(&text)
         q.duration = takeDuration(&text)
         takeLists(&text, into: &q, lists: lists)
+        // "/nextfri", "/nextweek", "/tmr", "/dec5": a day said as a slash word, in words again.
+        text = slashDays(text, now: now, weekStart: weekStart)
         // "td", "tmr", "eow": said in full, for the reading below. Yesterday is toyl's own.
         text = Shorthand.spelledOut(text)
         let saidYesterday = cut(Shorthand.yesterday, from: &text)
@@ -490,6 +492,85 @@ extension Quick {
     ]
     private static let commandAliases = ["proj": "project", "cal": "event", "calendar": "event"]
 
+    // MARK: days as slash words
+
+    /// Each "/word" that reads as a day, in words: "/nextfri" → "next fri". Others stay as typed.
+    private static func slashDays(_ text: String, now: Date, weekStart: Int) -> String {
+        var out = text
+        for match in matchesOf(slashWord, in: text).reversed() {
+            let ns = out as NSString
+            guard let phrase = dayPhrase(ns.substring(with: match.range(at: 1)), now: now, weekStart: weekStart) else { continue }
+            out = ns.replacingCharacters(in: match.range, with: " " + phrase + " ")
+        }
+        return out
+    }
+
+    private static let slashWord = pattern(#"(?<!\S)/([\p{L}\p{N}]+)(?!\S)"#)
+    private static let runTogether: [(NSRegularExpression, String)] = [
+        (pattern(#"^endof"#), "end of "),
+        (pattern(#"\b(next|this|the)(?=[a-z])"#), "$1 "),
+        (pattern(#"^in(?=\d)"#), "in "),
+        // "dec5", "fri5pm" → "dec 5", "fri 5pm"; "3days" → "3 days" (but "5pm", "3d" stay whole).
+        (pattern(#"(?<=[a-z])(?=\d)|(?<=\d)(?=[a-z]{3,})"#), " "),
+    ]
+
+    /// What a slash word means as a day, its words apart again ("nextfri" → "next fri",
+    /// "endofmonth" → "end of month", "in3d" → "in 3d"), if it means one; nil if it doesn't.
+    static func dayPhrase(_ word: String, now: Date = Date(), weekStart: Int = 1) -> String? {
+        var phrase = word.lowercased()
+        guard !phrase.contains("/") else { return nil }
+        for (pattern, template) in runTogether { phrase = replacing(pattern, in: phrase, with: template) }
+        phrase = tidy(phrase)
+        let read = parse("x " + phrase, lists: [], now: now, weekStart: weekStart)
+        guard read.due != nil, read.title == "x", read.repeats == nil, read.duration == nil, read.tags.isEmpty, read.newList == nil else { return nil }
+        return phrase
+    }
+
+    /// Days offered in the slash menu, in its order.
+    static let dayWords = ["today", "tomorrow", "tonight", "yesterday", "mon", "tue", "wed", "thu", "fri", "sat", "sun",
+                           "nextweek", "nextmon", "nexttue", "nextwed", "nextthu", "nextfri", "nextsat", "nextsun",
+                           "weekend", "nextweekend", "nextmonth", "endofweek", "endofmonth"]
+
+    /// The days, as slash words, each with the day it is from `now` ("fri dec 4"). Kept for the
+    /// day (they're read again for each letter typed after a "/").
+    static func daySlashWords(now: Date = Date(), weekStart: Int = 1) -> [SlashWord] {
+        let key = Day.today(now) + "|\(weekStart)"
+        return DayWordsKept.shared.words(for: key) { readDayWords(now: now, weekStart: weekStart) }
+    }
+
+    private static func readDayWords(now: Date, weekStart: Int) -> [SlashWord] {
+        dayWords.compactMap { word in
+            guard let phrase = dayPhrase(word, now: now, weekStart: weekStart),
+                  let due = parse("x " + phrase, lists: [], now: now, weekStart: weekStart).due, let date = Day.date(due) else { return nil }
+            return SlashWord(word: word, says: "due " + dayName.string(from: date).lowercased())
+        }
+    }
+
+    /// The slash menu's days, read once a day.
+    private final class DayWordsKept: @unchecked Sendable {
+        static let shared = DayWordsKept()
+        private let lock = NSLock()
+        private var key = ""
+        private var kept: [SlashWord] = []
+
+        func words(for key: String, _ read: () -> [SlashWord]) -> [SlashWord] {
+            lock.lock()
+            defer { lock.unlock() }
+            if key != self.key {
+                kept = read()
+                self.key = key
+            }
+            return kept
+        }
+    }
+
+    private static let dayName: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE MMM d"
+        return formatter
+    }()
+
     /// A slash word for the menu under the field: the word, and what it does.
     struct SlashWord: Equatable, Hashable {
         let word: String
@@ -514,14 +595,17 @@ extension Quick {
     /// The slash word being typed at the end ("/", "/pro", "essay /ti"): where it is, and the
     /// words it could be, for the menu under the field. Nil once it's a whole word, or for a slash
     /// inside a word ("a/b", a link).
-    static func slashMenu(_ input: String) -> (range: Range<String.Index>, words: [SlashWord])? {
+    static func slashMenu(_ input: String, now: Date = Date(), weekStart: Int = 1) -> (range: Range<String.Index>, words: [SlashWord])? {
         guard let slash = input.lastIndex(of: "/") else { return nil }
         let typed = input[input.index(after: slash)...]
         guard typed.allSatisfy(\.isLetter) else { return nil }
         let before = input[..<slash]
         if let last = before.last, !last.isWhitespace { return nil }
         let key = typed.lowercased()
-        let words = (before.allSatisfy(\.isWhitespace) ? lineWords : taskWords).filter { $0.word.hasPrefix(key) && $0.word != key }
+        // At the start, what a line makes, then days; after words, days first ("essay /nextfri").
+        let days = daySlashWords(now: now, weekStart: weekStart)
+        let offered = before.allSatisfy(\.isWhitespace) ? lineWords + days : days + taskWords
+        let words = offered.filter { $0.word.hasPrefix(key) && $0.word != key }
         return words.isEmpty ? nil : (slash..<input.endIndex, words)
     }
 

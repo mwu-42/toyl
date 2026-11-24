@@ -263,6 +263,7 @@ struct QuickAdd: View {
             }
             .animation(.snappy(duration: 0.14), value: menu == nil)
             .onChange(of: text) { _, now in slash.typed(now) }
+            .onAppear { slash.weekStart = model.snap.weekStart }
             if chips {
                 HStack(spacing: 6) {
                     // A slash word: what Return makes instead of a task.
@@ -609,6 +610,7 @@ struct AddUnder: View {
             }
         }
         .onChange(of: text) { _, now in slash.typed(now) }
+        .onAppear { slash.weekStart = model.snap.weekStart }
     }
 
     /// What quick add has read in what's typed, shaded.

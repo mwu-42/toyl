@@ -345,13 +345,45 @@ enum KeysTry {
             model.addingTo = nil
             spin(0.3)
             let every = Quick.slashMenu("/")?.words.map(\.word) ?? []
-            check("/ at the start: every word", every == ["list", "project", "group", "filter", "event", "timer", "stopwatch", "pin", "idea"], "\(every)")
-            check("…after a task's words, what goes on a task", Quick.slashMenu("essay /")?.words.map(\.word) == ["timer", "stopwatch", "pin", "idea"])
+            check("/ at the start: what a line makes, then days", Array(every.prefix(9)) == ["list", "project", "group", "filter", "event", "timer", "stopwatch", "pin", "idea"]
+                  && every.contains("nextfri") && every.last == "endofmonth", "\(every)")
+            let after = Quick.slashMenu("essay /")?.words.map(\.word) ?? []
+            check("…after a task's words, days first, then what goes on a task", after.first == "today" && Array(after.suffix(4)) == ["timer", "stopwatch", "pin", "idea"], "\(after)")
+            let next = Quick.slashMenu("essay /next")?.words ?? []
+            check("/next: next week, next fri, next month…", next.map(\.word).contains("nextfri") && next.map(\.word).contains("nextweek") && next.map(\.word).contains("nextmonth")
+                  && next.allSatisfy { $0.says.hasPrefix("due ") }, "\(next.map { $0.word + " " + $0.says })")
+
+            // Days said as slash words, read the same as in words.
+            let lists = model.snap.lists, week = model.snap.weekStart
+            func read(_ line: String) -> Quick { Quick.parse(line, lists: lists, weekStart: week) }
+            func same(_ slash: String, _ words: String) -> Bool {
+                let a = read("essay " + slash), b = read("essay " + words)
+                return a.due != nil && a.due == b.due && a.time == b.time && a.title == "essay"
+            }
+            check("/nextfri, /nextweek, /nextmonth", same("/nextfri", "next fri") && same("/nextweek", "next week") && same("/nextmonth", "next month"),
+                  "\(read("essay /nextfri")) \(read("essay next fri"))")
+            check("/today, /tomorrow, /tmr, /fri, /weekend", same("/today", "today") && same("/tomorrow", "tomorrow") && same("/tmr", "tomorrow")
+                  && same("/fri", "fri") && same("/weekend", "weekend"))
+            check("/endofweek, /endofmonth, /eow", same("/endofweek", "by end of the week") && same("/endofmonth", "by end of the month") && same("/eow", "by end of the week"))
+            check("/in3d, /in2w, /dec5, /fri5pm", same("/in3d", "in 3 days") && same("/in2w", "in 2 weeks") && same("/dec5", "dec 5") && same("/fri5pm", "fri 5pm"))
+            check("/nextfri first on the line: still a task, due then", read("/nextfri essay").title == "essay" && read("/nextfri essay").due == read("essay next fri").due
+                  && Quick.command("/nextfri essay", lists: lists) == nil)
+            check("a slash word that isn't a day stays as typed", read("fix /etc/hosts").title == "fix /etc/hosts" && read("essay /foo").title == "essay /foo"
+                  && read("essay /foo").due == nil, "\(read("essay /foo").title)")
+            check("the menu shows 8 at most", SlashMenu.height(30) == 8 * SlashMenu.rowHeight + SlashMenu.inset * 2 + SlashMenu.moreHeight
+                  && SlashMenu.first(picked: 0, count: 30) == 0 && SlashMenu.first(picked: 29, count: 30) == 22)
             check("…none for a slash in a word or a link", Quick.slashMenu("read a/b") == nil && Quick.slashMenu("see https://x.com/a") == nil
                   && Quick.slashMenu("/list") == nil && Quick.slashMenu("/list ") == nil)
             enter()
             type("/")
+            spin(0.3)
             picture("slash-menu")
+            // The menu's own window, drawn.
+            if let folder = ProcessInfo.processInfo.environment["TOYL_PICTURES"], let view = window.childWindows?.first?.contentView,
+               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                view.cacheDisplay(in: view.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: folder).appendingPathComponent("slash-menu-window.png"))
+            }
             down()
             down()
             check("↓ in the menu doesn't leave quick add", field("quick")?.hasKeys == true)
@@ -361,7 +393,7 @@ enum KeysTry {
             type("/")
             up()
             tab()
-            check("↑ goes round to the last, Tab takes it", text("quick") == "/idea ", "'\(text("quick"))'")
+            check("↑ goes round to the last, Tab takes it", text("quick") == "/endofmonth ", "'\(text("quick"))'")
             escape()
             type("/")
             escape()
@@ -375,6 +407,12 @@ enum KeysTry {
             check("after words: Return takes /pin", text("quick") == "essay /pin ", "'\(text("quick"))'")
             enter()
             check("…and Return again adds it, pinned", task("essay")?.pinned == true, "\(String(describing: task("essay")))")
+            type("read ch 4 /nextf")
+            enter()
+            check("/nextf: Return takes /nextfri", text("quick") == "read ch 4 /nextfri ", "'\(text("quick"))'")
+            enter()
+            check("…and it's added due next friday", task("read ch 4")?.due == read("x next fri").due && task("read ch 4") != nil,
+                  "\(String(describing: task("read ch 4")?.due))")
 
             // A click on a word in the menu, over the list under it.
             orderIn()

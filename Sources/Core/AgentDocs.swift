@@ -100,6 +100,7 @@ enum AgentDocs {
         - `?` first: an idea. `~list` or `~"two words"`: a list, made if needed. `#word`: list or tag.
         - Days: `today`, `tomorrow`, `fri`, `next fri`, `in 3 days`, `nov 30`, `2026-12-01`, `5pm`, `17:00`, `noon`, `3-4pm`.
           Shorthand too: `td`, `tmr`, `yd` (yesterday), `nw`, `nm`, `eod`, `eow`, `eom`, `wknd`, `nxt fri`, `in 3d`, `in 2w`.
+          Or as a slash word: `/nextfri`, `/nextweek`, `/tomorrow`, `/dec5`, `/in3d`.
         - `by fri`, `next week`, `early dec`, `in a month or so`, `fri-ish`: due then.
         - `every day/weekday/week/other week/month/year`, `every fri`, `daily`, `weekly`.
         - `~30m`, `for 2h`, `1h30m`: duration. `!` or `/pin`: pinned. `/idea`: put off into ideas. ` // ` then notes.

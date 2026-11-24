@@ -68,6 +68,9 @@ open behind what you're doing (in front only if you were using toyl), never taki
   - `/timer`, `/timer 30m`, `/stopwatch` start a timer on it (alone, just a timer)
   - **type `/` for a menu of slash words**: ↑ ↓ to pick, Return, Tab or a click to take one, Escape to put it away
     - at the start of the line, what it can make (below); after a task's words, what can go on it: `/timer`, `/stopwatch`, `/pin`, `/idea`
+    - days too, each with the date it means: `/today`, `/tomorrow`, `/fri`, `/nextfri`, `/nextweek`, `/nextmonth`, `/weekend`, `/endofweek`, `/endofmonth`…
+    - any day reads as a slash word, in the menu or not: `/tmr`, `/dec5`, `/in3d`, `/fri5pm`, `/eow`
+    - it shows 8 at a time: ↑ ↓ for the rest, or keep typing (`/next` leaves only the next ones)
   - **a slash word first makes something else**, shown under the field before you press Return:
     - `/list groceries` a list · `/project final essay #cs` a project (in the list named, else the one you're in) · `/group school` a group of lists
     - `/filter #cs due:week` a saved filter · `/event lunch with sam fri noon` google calendar's form, filled in

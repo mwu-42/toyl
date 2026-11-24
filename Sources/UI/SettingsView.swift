@@ -644,6 +644,7 @@ struct QuickEntryView: View {
         }
         .onChange(of: menu?.words.count ?? 0) { _, count in fit(count == 0 ? 0 : SlashMenu.height(count) + 10) }
         .onChange(of: text) { _, now in slash.typed(now) }
+        .onAppear { slash.weekStart = model.snap.weekStart }
     }
 
     private func add(keepOpen: Bool) {

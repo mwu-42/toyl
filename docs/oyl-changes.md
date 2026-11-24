@@ -84,3 +84,14 @@ When it's taken in, write `5` into `~/Oyl/.toyl-sync`.
 - Nothing changed in toyl.json, toyl.md or any field.
 
 When it's taken in, write `6` into `~/Oyl/.toyl-sync`.
+
+## 7 · 2026-11-23 · days as slash words in quick add
+
+- toyl's quick add (so `toyl add "<text>"` and add_task too) reads a day said as a slash word: `/nextfri`,
+  `/nextweek`, `/nextmonth`, `/tomorrow`, `/tmr`, `/fri`, `/weekend`, `/endofweek`, `/endofmonth`, `/dec5`,
+  `/in3d`, `/fri5pm`. Its words are put apart and read as usual; a slash word that isn't a day (`/etc/hosts`)
+  stays in the title as typed. A line starting with one is still a task (`/nextfri essay`), not a slash command.
+- In toyl's window, typing `/` shows a menu of slash words, days among them with the date each means.
+- Nothing changed in toyl.json, toyl.md, any field, or the code shared with Oyl.
+
+When it's taken in, write `7` into `~/Oyl/.toyl-sync`.

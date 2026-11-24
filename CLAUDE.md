@@ -117,8 +117,10 @@ It's the v3 format Oyl's to-do store reads, grown:
 - **Slash words make other things** (`Quick.Command`, `AppModel.perform`): `/list`, `/project`, `/group`, `/filter`,
   `/event`, and `/timer` with no task named, at the start of quick add (the + lines, quick entry, the phone, `toyl add`,
   add_task too). What it'll make shows under the field first. Typing `/` opens a menu of the words (`SlashMenu`,
-  `SlashPick`, `Quick.slashMenu`): line words at the start, task words (/timer, /stopwatch, /pin, /idea) after
-  other words; ↑ ↓ pick, Return/Tab/click take, Escape puts it away until the text changes. Over the list it floats
+  `SlashPick`, `Quick.slashMenu`): line words at the start, then days; after other words, days first, then task
+  words (/timer, /stopwatch, /pin, /idea). Days (`Quick.dayWords`, shown with their date) are read by
+  `Quick.slashDays`: any `/word` whose words, put apart ("nextfri" → "next fri", "dec5" → "dec 5"), read as a day
+  is that day; anything else stays as typed (`/etc/hosts`). 8 rows at most, scrolling with the pick; ↑ ↓ pick, Return/Tab/click take, Escape puts it away until the text changes. Over the list it floats
   in a child window (`Floating`), since the list's AppKit scroll view takes clicks ahead of anything SwiftUI draws
   on it; that window never takes the keys. Named: made at once; alone: made ready to name. The phone does lists, projects, groups and timers only.
 - **Nothing redraws the whole window on a timer.** Countdowns tick in their own `TimelineView`s; what goes by the

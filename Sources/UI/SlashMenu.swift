@@ -5,11 +5,13 @@ import SwiftUI
 struct SlashPick: Equatable {
     var index = 0
     var closedFor: String?
+    /// The day weeks start on (for what "/nextfri" is).
+    var weekStart = 1
 
     /// The menu for what's typed, if one shows.
     func menu(_ text: String) -> (range: Range<String.Index>, words: [Quick.SlashWord])? {
         guard closedFor != text else { return nil }
-        return Quick.slashMenu(text)
+        return Quick.slashMenu(text, weekStart: weekStart)
     }
 
     /// The picked word, kept within the menu.
@@ -58,14 +60,23 @@ struct SlashMenu: View {
 
     static let rowHeight: CGFloat = 28
     static let inset: CGFloat = 5
+    /// The most words shown at once; ↑ ↓ go on to the rest (typing more narrows them).
+    static let most = 8
+    static let moreHeight: CGFloat = 22
     /// How tall it is with `count` words.
-    static func height(_ count: Int) -> CGFloat { CGFloat(count) * rowHeight + inset * 2 }
+    static func height(_ count: Int) -> CGFloat {
+        CGFloat(min(count, most)) * rowHeight + inset * 2 + (count > most ? moreHeight : 0)
+    }
+    /// The first word shown, so the picked one's in sight.
+    static func first(picked: Int, count: Int) -> Int { max(0, min(picked - (most - 2), count - most)) }
     static let width: CGFloat = 340
     static func size(_ count: Int) -> CGSize { CGSize(width: width, height: height(count)) }
 
     var body: some View {
+        let first = Self.first(picked: picked, count: words.count)
+        let shown = Array(words.enumerated()).dropFirst(first).prefix(Self.most)
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(words.enumerated()), id: \.element) { index, word in
+            ForEach(Array(shown), id: \.element) { index, word in
                 HStack(spacing: 10) {
                     Text("/" + word.word).font(Theme.font(15)).foregroundStyle(Theme.ink)
                     Text(word.says).font(Theme.font(13)).foregroundStyle(Theme.secondary).lineLimit(1)
@@ -80,6 +91,12 @@ struct SlashMenu: View {
                 .contentShape(Rectangle())
                 .onHover { inside in if inside { pick(index) } }
                 .onTapGesture { take(index) }
+            }
+            if words.count > Self.most {
+                Text("↑ ↓ for \(words.count - Self.most) more, or keep typing")
+                    .font(Theme.font(12)).foregroundStyle(Theme.faint)
+                    .padding(.horizontal, 10)
+                    .frame(height: Self.moreHeight)
             }
         }
         .padding(Self.inset)
