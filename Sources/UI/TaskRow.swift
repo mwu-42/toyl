@@ -48,10 +48,7 @@ struct TaskRow: View {
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 10)
-        .background(RoundedRectangle(cornerRadius: 7).fill(selected ? Theme.selection : hovering ? Theme.hover : .clear))
-        .overlay(alignment: .top) {
-            if targeted { Rectangle().fill(Theme.accent).frame(height: 2).padding(.horizontal, 6) }
-        }
+        .background(RoundedRectangle(cornerRadius: 7).fill(targeted ? Theme.selectionFocused : selected ? Theme.selection : hovering ? Theme.hover : .clear))
         .background(Theme.paper.opacity(model.swipe?.id == task.id ? 1 : 0))
         .offset(x: model.swipe?.id == task.id ? model.swipe!.offset : 0)
         .background { SwipeBehind(offset: model.swipe?.id == task.id ? model.swipe!.offset : 0, inProgress: model.isInProgress(task), timed: timer != nil) }
@@ -62,14 +59,37 @@ struct TaskRow: View {
         }
         .onTapGesture { click() }
         .contextMenu { TaskMenu(model: model, ids: menuTargets) }
-        .draggable("toyl:" + dragTargets.joined(separator: ",")) {
+        .toylDrag(model, "toyl:" + dragTargets.joined(separator: ",")) {
             TaskDragPreview(title: model.display(task.title), count: dragTargets.count)
         }
-        .dropDestination(for: String.self) { items, _ in
-            // An event from the calendar: this task follows it.
-            if items.contains(where: { $0.hasPrefix("toyl-event:") }) { return model.linkEvent(items, to: task.id) }
-            return model.drop(items, list: group.listId ?? task.listId, section: group.sectionId ?? task.sectionId, before: task.id)
-        } isTargeted: { targeted = $0 }
+        // Tasks (or text) go above or below it, by the half the pointer's in; an event from the
+        // calendar ties it to that event; a sublist item joins its sublist.
+        .columnDrop(model, lit: $targeted, accepts: { ["tasks", "text", "event", "sub"].contains(Drag.kind($0)) },
+                    reorders: { ["tasks", "text"].contains(Drag.kind($0)) }) { items, spot in
+            dropped(items, spot)
+        }
+    }
+
+    private func dropped(_ items: [String], _ spot: RowSpot) -> Bool {
+        guard let first = items.first else { return false }
+        switch Drag.kind(first) {
+        case "event":
+            return model.linkEvent(items, to: task.id)
+        case "sub":
+            guard let (source, item) = Drag.pair(first) else { return false }
+            model.moveSubtask(item, from: source, to: task.id, before: nil)
+            return true
+        default:
+            let ids = group.tasks.map(\.id)
+            let next = ids.firstIndex(of: task.id).flatMap { $0 + 1 < ids.count ? ids[$0 + 1] : nil }
+            let before = spot == .below ? next : task.id
+            let tasks = items.filter { $0.hasPrefix("toyl:") }.flatMap { $0.dropFirst(5).split(separator: ",").map(String.init) }
+            if !tasks.isEmpty {
+                model.reorder(tasks, in: group, before: before)
+                return true
+            }
+            return model.drop(items, list: group.listId ?? task.listId, section: group.sectionId ?? task.sectionId, before: before)
+        }
     }
 
     /// The selection, if this is one of it; else just this.
@@ -265,6 +285,8 @@ struct Sublist: View {
     let task: TaskModel
     var adding = false
     @Local private var text = ""
+    /// The item being changed in place (double-click it).
+    @Local private var editing: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -272,14 +294,40 @@ struct Sublist: View {
                 HStack(spacing: 8) {
                     CheckCircle(done: item.done, size: 13)
                         .onTapGesture { change(item.id) { $0.done.toggle() } }
-                    Text(model.display(item.title))
-                        .font(Theme.font(15))
-                        .foregroundStyle(item.done ? Theme.secondary : Theme.ink)
-                        .strikethrough(item.done, color: Theme.faint)
-                        .animation(.easeOut(duration: 0.2), value: item.done)
+                    if editing == item.id {
+                        SubEditor(title: item.title) { title in
+                            if let title { change(item.id) { $0.title = title } }
+                            editing = nil
+                        }
+                    } else {
+                        Text(model.display(item.title))
+                            .font(Theme.font(15))
+                            .foregroundStyle(item.done ? Theme.secondary : Theme.ink)
+                            .strikethrough(item.done, color: Theme.faint)
+                            .animation(.easeOut(duration: 0.2), value: item.done)
+                            // A click selects the task, as anywhere on it; a double-click changes the item.
+                            .onTapGesture {
+                                if DoubleClick.second("sub:" + item.id) {
+                                    editing = item.id
+                                } else {
+                                    model.select(task.id)
+                                    model.leaveTyping()
+                                }
+                            }
+                    }
+                }
+                .contentShape(Rectangle())
+                .toylDrag(model, "toyl-sub:\(task.id)|\(item.id)") { SidebarDragPreview(text: model.display(item.title)) }
+                .columnDrop(model, inset: 0, accepts: { Drag.kind($0) == "sub" }, reorders: { _ in true }) { items, spot in
+                    guard let first = items.first, let (source, moving) = Drag.pair(first) else { return false }
+                    let ids = task.subtasks.map(\.id)
+                    let next = ids.firstIndex(of: item.id).flatMap { $0 + 1 < ids.count ? ids[$0 + 1] : nil }
+                    model.moveSubtask(moving, from: source, to: task.id, before: spot == .below ? next : item.id)
+                    return true
                 }
                 .contextMenu {
                     Button(item.done ? "uncheck" : "check off") { change(item.id) { $0.done.toggle() } }
+                    Button("change it") { editing = item.id }
                     Button("remove from the sublist") { remove(item.id) }
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -436,5 +484,36 @@ struct TitleEditor: View {
         }
         if leave { model.leaveTyping() }
         if model.editing == task.id { model.editing = nil }
+    }
+}
+
+/// A sublist item's words being changed in place: Return (or clicking away) keeps them, Escape
+/// doesn't. `done` gets the new words, or nil.
+struct SubEditor: View {
+    let title: String
+    let done: (String?) -> Void
+    @Local private var text: String
+    @Local private var finished = false
+
+    init(title: String, done: @escaping (String?) -> Void) {
+        self.title = title
+        self.done = done
+        _text = Local(initialValue: title)
+    }
+
+    var body: some View {
+        PlainField(text: $text, font: Theme.nsFont(15), autofocus: true,
+                   onSubmit: { finish(keep: true, leave: true) }, onEscape: { finish(keep: false, leave: true) },
+                   onTab: { true }, onEnd: { finish(keep: true, leave: false) })
+            .frame(height: 19)
+            .onDisappear { finish(keep: true, leave: false) }
+    }
+
+    private func finish(keep: Bool, leave: Bool) {
+        guard !finished else { return }
+        finished = true
+        let typed = text.trimmingCharacters(in: .whitespaces)
+        if leave { Keys.letGo() }
+        done(keep && !typed.isEmpty && typed != title ? typed : nil)
     }
 }

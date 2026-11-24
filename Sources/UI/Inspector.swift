@@ -505,9 +505,24 @@ struct SublistRow: View {
                     p.subtasks = task.subtasks.filter { $0.id != item.id }
                     model.store.update(task.id, "remove from sublist", p)
                 }
+                // Its words are a field, so it's dragged by this.
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.faint)
+                    .frame(width: 16, height: 16)
+                    .contentShape(Rectangle())
+                    .toylDrag(model, "toyl-sub:\(task.id)|\(item.id)") { SidebarDragPreview(text: model.display(item.title)) }
+                    .help("drag to move it")
             }
         }
         .onHover { hovering = $0 }
+        .columnDrop(model, inset: 0, accepts: { Drag.kind($0) == "sub" }, reorders: { _ in true }) { items, spot in
+            guard let first = items.first, let (source, moving) = Drag.pair(first) else { return false }
+            let ids = task.subtasks.map(\.id)
+            let next = ids.firstIndex(of: item.id).flatMap { $0 + 1 < ids.count ? ids[$0 + 1] : nil }
+            model.moveSubtask(moving, from: source, to: task.id, before: spot == .below ? next : item.id)
+            return true
+        }
     }
 
     private func save() {

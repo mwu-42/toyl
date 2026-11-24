@@ -106,7 +106,7 @@ struct PanelGrip: View {
                 .background(Capsule().fill(targeted ? Theme.selection : hovering ? Theme.hover : .clear))
                 .contentShape(Rectangle())
                 .onHover { hovering = $0 }
-                .draggable("toyl-panel:" + panel.rawValue) {
+                .toylDrag(model, "toyl-panel:" + panel.rawValue) {
                     Text(panel.name).font(Theme.font(14)).padding(.horizontal, 10).padding(.vertical, 4)
                         .background(Capsule().fill(Theme.field))
                 }
@@ -183,10 +183,10 @@ struct SidebarView: View {
             Color.clear.frame(height: 46)
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {
-                    ForEach(Place.smart, id: \.self) { place in SidebarRow(model: model, place: place) }
+                    // The fixed places, in the order they've been dragged into: four, a gap, two.
+                    ForEach(model.placeOrder.prefix(4), id: \.self) { place in SidebarRow(model: model, place: place) }
                     Spacer().frame(height: 10)
-                    SidebarRow(model: model, place: .ideas)
-                    SidebarRow(model: model, place: .timers)
+                    ForEach(model.placeOrder.dropFirst(4), id: \.self) { place in SidebarRow(model: model, place: place) }
                     if !snap.filters.isEmpty {
                         SidebarLabel(text: "filters")
                         ForEach(snap.filters) { filter in SidebarRow(model: model, place: .filter(filter.id)) }
@@ -202,7 +202,7 @@ struct SidebarView: View {
                     let groupIds = Set(snap.groups.map(\.id))
                     let loose = snap.ownLists.filter { ($0.group.map { !groupIds.contains($0) } ?? true) && !$0.archived }
                     if !loose.isEmpty {
-                        SidebarLabel(text: "lists")
+                        LooseListsLabel(model: model)
                         ForEach(loose) { list in SidebarRow(model: model, place: .list(list.id)) }
                     }
                     let archived = snap.ownLists.filter(\.archived)
@@ -242,6 +242,28 @@ struct SidebarView: View {
     }
 }
 
+/// "lists", over the lists in no group: a list dropped on it comes out of its group.
+struct LooseListsLabel: View {
+    @ObservedObject var model: AppModel
+    @Local private var lit = false
+
+    var body: some View {
+        HStack {
+            Text("lists").font(Theme.font(12.5)).foregroundStyle(lit ? Theme.accent : Theme.faint)
+            Spacer()
+        }
+        .padding(.leading, 10)
+        .padding(.top, 16)
+        .padding(.bottom, 3)
+        .contentShape(Rectangle())
+        .columnDrop(model, lit: $lit, accepts: { Drag.kind($0) == "list" }, reorders: { _ in false }) { items, _ in
+            guard let item = items.first(where: { Drag.kind($0) == "list" }) else { return false }
+            model.moveList(Drag.value(item), before: nil, group: .some(nil))
+            return true
+        }
+    }
+}
+
 struct SidebarLabel: View {
     let text: String
     var body: some View {
@@ -254,11 +276,13 @@ struct SidebarLabel: View {
     }
 }
 
-/// A group's heading: click to fold its lists away; right-click to rename or take it away.
+/// A group's heading: click to fold its lists away; double-click to rename it; right-click to
+/// rename or take it away. Drag it to reorder the groups; drop a list on it to put the list in it.
 struct GroupHeader: View {
     @ObservedObject var model: AppModel
     let group: GroupModel
     @Local private var hovering = false
+    @Local private var lit = false
 
     var body: some View {
         let folded = model.collapsedGroups.contains(group.id)
@@ -268,7 +292,7 @@ struct GroupHeader: View {
             } else {
                 Text(model.display(group.name))
                     .font(Theme.font(12.5))
-                    .foregroundStyle(Theme.faint)
+                    .foregroundStyle(lit ? Theme.accent : Theme.faint)
                 Image(systemName: folded ? "chevron.right" : "chevron.down")
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(Theme.faint)
@@ -281,8 +305,23 @@ struct GroupHeader: View {
         .padding(.bottom, 3)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onTapGesture {
-            if folded { model.collapsedGroups.remove(group.id) } else { model.collapsedGroups.insert(group.id) }
+        .gesture(TapGesture(count: 2).onEnded { model.renaming = "group:" + group.id }
+            .exclusively(before: TapGesture().onEnded {
+                if folded { model.collapsedGroups.remove(group.id) } else { model.collapsedGroups.insert(group.id) }
+            }))
+        .toylDrag(model, "toyl-group:" + group.id) { SidebarDragPreview(text: model.display(group.name)) }
+        .columnDrop(model, lit: $lit, inset: 10, accepts: { ["group", "list"].contains(Drag.kind($0)) },
+                    reorders: { Drag.kind($0) == "group" }) { items, spot in
+            guard let item = items.first else { return false }
+            if Drag.kind(item) == "list" {
+                model.moveList(Drag.value(item), before: nil, group: .some(group.id))
+                model.collapsedGroups.remove(group.id)
+                return true
+            }
+            let groups = model.snap.groups.map(\.id)
+            let next = groups.firstIndex(of: group.id).flatMap { $0 + 1 < groups.count ? groups[$0 + 1] : nil }
+            model.moveGroup(Drag.value(item), before: spot == .above ? group.id : next)
+            return true
         }
         .contextMenu {
             Button("new list here") { model.newList(group: group.id) }
@@ -294,7 +333,8 @@ struct GroupHeader: View {
 }
 
 /// One place in the sidebar: a smart list, a list, a tag or a saved filter. Tasks dropped on it
-/// go there (on today: due today; on logbook: done).
+/// go there (on today: due today; on logbook: done). Lists, filters and the fixed places drag to
+/// reorder; a double-click on a list, a filter or a tag renames it.
 struct SidebarRow: View {
     @ObservedObject var model: AppModel
     let place: Place
@@ -312,6 +352,8 @@ struct SidebarRow: View {
                 RenameField(name: model.snap.list(id)?.name ?? "") { model.renameList(id, to: $0) } done: { model.renaming = nil }
             } else if case .filter(let id) = place, model.renaming == "filter:" + id {
                 RenameField(name: model.snap.filters.first { $0.id == id }?.name ?? "") { model.renameFilter(id, to: $0) } done: { model.renaming = nil }
+            } else if case .tag(let tag) = place, model.renaming == "tag:" + tag {
+                RenameField(name: tag) { model.renameTag(tag, to: $0) } done: { model.renaming = nil }
             } else {
                 Text(name)
                     .font(Theme.sidebarItem)
@@ -336,9 +378,75 @@ struct SidebarRow: View {
         )
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onTapGesture { model.place = place }
-        .dropDestination(for: String.self) { items, _ in drop(items) } isTargeted: { targeted = $0 }
+        .onTapGesture {
+            let again = DoubleClick.second("sidebar:" + place.key) && model.place == place
+            model.place = place
+            if again, let key = renameKey { model.renaming = key }
+        }
+        .modifier(SidebarDrag(model: model, payload: payload, name: name))
+        .columnDrop(model, lit: $targeted, inset: 10, accepts: accepts, reorders: { payload != nil && Drag.kind($0) == Drag.kind(payload) }) { items, spot in
+            if spot == .into { return drop(items) }
+            return reorder(items, spot)
+        }
         .contextMenu { menu }
+    }
+
+    /// What a double-click renames (lists, filters, tags; not the fixed places or the inbox).
+    private var renameKey: String? {
+        switch place {
+        case .list(let id): return model.snap.list(id)?.isSpecial == false ? "list:" + id : nil
+        case .filter(let id): return "filter:" + id
+        case .tag(let tag): return "tag:" + tag
+        default: return nil
+        }
+    }
+
+    /// What it's dragged as, if it can be (tags are in their own order).
+    private var payload: String? {
+        switch place {
+        case .list(let id): return "toyl-list:" + id
+        case .filter(let id): return "toyl-filter:" + id
+        default: return AppModel.places.contains(place) ? "toyl-place:" + place.key : nil
+        }
+    }
+
+    /// What it takes: its own kind (to reorder), and tasks or text where they can go.
+    private func accepts(_ dragging: String) -> Bool {
+        let kind = Drag.kind(dragging)
+        if let payload, kind == Drag.kind(payload) { return true }
+        guard kind == "tasks" || kind == "text" else { return false }
+        switch place {
+        case .list, .inbox, .ideas, .today, .inProgress: return true
+        case .tag: return kind == "tasks"
+        default: return false
+        }
+    }
+
+    /// One of its own kind dropped above or below it.
+    private func reorder(_ items: [String], _ spot: RowSpot) -> Bool {
+        guard let item = items.first else { return false }
+        let snap = model.snap
+        switch place {
+        case .list(let id):
+            guard Drag.kind(item) == "list", let list = snap.list(id) else { return false }
+            // Its group as the sidebar shows it (one that's gone counts as none); archived ones are together.
+            let groupIds = Set(snap.groups.map(\.id))
+            func shownGroup(_ l: ListModel) -> String? { l.group.flatMap { groupIds.contains($0) ? $0 : nil } }
+            let siblings = snap.ownLists.filter { list.archived ? $0.archived : !$0.archived && shownGroup($0) == shownGroup(list) }.map(\.id)
+            let next = siblings.firstIndex(of: id).flatMap { $0 + 1 < siblings.count ? siblings[$0 + 1] : nil }
+            model.moveList(Drag.value(item), before: spot == .above ? id : next, group: list.archived ? nil : .some(shownGroup(list)))
+        case .filter(let id):
+            guard Drag.kind(item) == "filter" else { return false }
+            let filters = snap.filters.map(\.id)
+            let next = filters.firstIndex(of: id).flatMap { $0 + 1 < filters.count ? filters[$0 + 1] : nil }
+            model.moveFilter(Drag.value(item), before: spot == .above ? id : next)
+        default:
+            guard Drag.kind(item) == "place", let moving = Place(key: Drag.value(item)) else { return false }
+            let order = model.placeOrder
+            let next = order.firstIndex(of: place).flatMap { $0 + 1 < order.count ? order[$0 + 1] : nil }
+            model.movePlace(moving, before: spot == .above ? place : next)
+        }
+        return true
     }
 
     @ViewBuilder private var icon: some View {
@@ -466,23 +574,25 @@ struct CalendarMark: View {
 /// doesn't, clicking away keeps it.
 struct RenameField: View {
     let name: String
+    var font = Theme.nsFont(15.5)
     let save: (String) -> Void
     let done: () -> Void
     @Local private var text: String
     @Local private var finished = false
 
-    init(name: String, save: @escaping (String) -> Void, done: @escaping () -> Void) {
+    init(name: String, font: NSFont = Theme.nsFont(15.5), save: @escaping (String) -> Void, done: @escaping () -> Void) {
         self.name = name
+        self.font = font
         self.save = save
         self.done = done
         _text = Local(initialValue: name)
     }
 
     var body: some View {
-        PlainField(text: $text, font: Theme.nsFont(15.5), name: "rename", autofocus: true, selectAll: true,
+        PlainField(text: $text, font: font, name: "rename", autofocus: true, selectAll: true,
                    onSubmit: { finish(keep: true, leave: true) }, onEscape: { finish(keep: false, leave: true) },
                    onTab: { true }, onEnd: { finish(keep: true, leave: false) })
-            .frame(height: 20)
+            .frame(height: ceil(font.pointSize * 1.3))
             .onDisappear { finish(keep: true, leave: false) }
     }
 
@@ -493,5 +603,36 @@ struct RenameField: View {
         if keep, !typed.isEmpty, typed != name { save(typed) }
         if leave { Keys.letGo() }
         done()
+    }
+}
+
+/// A sidebar row dragged: a small pill with its name, not the whole row.
+struct SidebarDragPreview: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(Theme.font(14))
+            .foregroundStyle(Theme.ink)
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(Theme.paper))
+            .overlay(Capsule().strokeBorder(Theme.rule))
+    }
+}
+
+/// Draggable, when it has a payload (tags don't).
+struct SidebarDrag: ViewModifier {
+    let model: AppModel
+    let payload: String?
+    let name: String
+
+    func body(content: Content) -> some View {
+        if let payload {
+            content.toylDrag(model, payload) { SidebarDragPreview(text: name) }
+        } else {
+            content
+        }
     }
 }

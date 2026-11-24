@@ -66,6 +66,12 @@ final class AppModel: ObservableObject {
     @Published var panelOrder: [Panel] { didSet { defaults.set(panelOrder.map(\.rawValue), forKey: "panels.2") } }
     /// How tall the calendar's hours are (pinch, or ⌘= and ⌘-): 1 is 44 points an hour.
     @Published var calendarZoom: CGFloat { didSet { defaults.set(Double(calendarZoom), forKey: "calendarZoom") } }
+    /// The fixed places, as the sidebar has them (drag to reorder; ⌘1–6 follow).
+    @Published var placeOrder: [Place] { didSet { defaults.set(placeOrder.map(\.key), forKey: "placeOrder") } }
+    static let places: [Place] = [.anytime, .inbox, .today, .inProgress, .ideas, .timers]
+    /// What's being dragged in the window (see `Drag`): set as a drag starts, so what it passes
+    /// over can show where it'd go. Not watched: the rows it's over read it.
+    var dragging: String?
     /// The page (the to-dos) showing: it can be hidden, leaving the calendar or the description to fill the window.
     @Published var showTasks: Bool { didSet { defaults.set(showTasks, forKey: "pagePanel") } }
     @Published var showDone = false
@@ -153,6 +159,8 @@ final class AppModel: ObservableObject {
         let saved = (defaults.stringArray(forKey: "panels.2") ?? []).compactMap(Panel.init(rawValue:))
         calendarZoom = CGFloat(defaults.object(forKey: "calendarZoom") as? Double ?? 1)
         showTasks = defaults.object(forKey: "pagePanel") as? Bool ?? true
+        let places = (defaults.stringArray(forKey: "placeOrder") ?? []).compactMap(Place.init(key:))
+        placeOrder = Set(places) == Set(Self.places) && places.count == Self.places.count ? places : Self.places
         panelOrder = Set(saved) == Set(Panel.allCases) && saved.count == Panel.allCases.count ? saved : Panel.standard
         lowercaseAll = defaults.bool(forKey: "lowercaseAll")
         suggestWhileTyping = defaults.object(forKey: "suggest") as? Bool ?? true
@@ -636,7 +644,7 @@ final class AppModel: ObservableObject {
 
     /// Drops: tasks dragged here (as "toyl:id,id"), or text from anywhere (a task a line).
     func drop(_ items: [String], list: String, section: String?, before: String?, project: String?? = nil) -> Bool {
-        for item in items where !item.hasPrefix("toyl-panel:") && !item.hasPrefix("toyl-event:") {
+        for item in items where !item.hasPrefix("toyl-") {
             if item.hasPrefix("toyl:") {
                 let ids = item.dropFirst(5).split(separator: ",").map(String.init).filter { snap.task($0) != nil }
                 guard !ids.isEmpty else { continue }
@@ -731,6 +739,153 @@ final class AppModel: ObservableObject {
     }
 
     func moveList(_ id: String, before: String?) { store.change("move list") { $0.moveList(id, before: before) } }
+
+    // MARK: - reordering by dragging
+
+    /// A list dragged in the sidebar: before `before` (or last), into `group` if one's given
+    /// (`.some(nil)`: out of any group).
+    func moveList(_ id: String, before: String?, group: String??) {
+        guard id != before else { return }
+        withAnimation(.snappy(duration: 0.25)) {
+            store.change("move list") { doc in
+                if let group { doc.updateList(id, group: .some(group)) }
+                doc.moveList(id, before: before)
+            }
+        }
+    }
+
+    func moveGroup(_ id: String, before: String?) {
+        guard id != before else { return }
+        withAnimation(.snappy(duration: 0.25)) { store.change("move group") { $0.moveGroup(id, before: before) } }
+    }
+
+    func moveFilter(_ id: String, before: String?) {
+        guard id != before else { return }
+        withAnimation(.snappy(duration: 0.25)) { store.change("move filter") { $0.moveFilter(id, before: before) } }
+    }
+
+    func moveProject(_ id: String, in list: String, before: String?) {
+        guard id != before else { return }
+        withAnimation(.snappy(duration: 0.25)) { store.change("move project") { $0.moveProject(id, in: list, before: before) } }
+    }
+
+    /// One of the fixed places, before another (or last).
+    func movePlace(_ place: Place, before: Place?) {
+        guard place != before, placeOrder.contains(place) else { return }
+        var order = placeOrder.filter { $0 != place }
+        order.insert(place, at: before.flatMap { order.firstIndex(of: $0) } ?? order.count)
+        withAnimation(.snappy(duration: 0.25)) { placeOrder = order }
+    }
+
+    /// Tasks dragged to a spot in what's shown: before `before` (else at the end of `group`), by
+    /// hand. In a list's view they go into that list (and project); where lists are mixed (today,
+    /// a tag) each stays in its own list, placed before the next of its list after the spot. If
+    /// the place was sorted another way, what's shown becomes the order by hand first (so nothing
+    /// else moves), and it's sorted by hand from then on.
+    func reorder(_ ids: [String], in group: TaskGroup, before: String?) {
+        let moving = ids.compactMap { snap.task($0) }
+        guard !moving.isEmpty, !(before.map(ids.contains) ?? false) else { return }
+        let movingIds = Set(moving.map(\.id))
+        let shown = visible
+        let start: Int
+        if let before, let at = shown.firstIndex(where: { $0.id == before }) {
+            start = at
+        } else if let last = group.tasks.last(where: { !movingIds.contains($0.id) }), let at = shown.firstIndex(where: { $0.id == last.id }) {
+            start = at + 1
+        } else {
+            start = shown.count
+        }
+        let after = shown[start...].filter { !movingIds.contains($0.id) }
+        let target = before.flatMap { snap.task($0) }
+        let byProject = groupMode(place) == .project && group.listId != nil
+        let freeze: [(list: String, section: String, ids: [String])]
+        let wasSorted = sortMode(place) != .manual
+        if wasSorted {
+            var runs: [(list: String, section: String, ids: [String])] = []
+            for task in shown where !movingIds.contains(task.id) {
+                if let at = runs.firstIndex(where: { $0.list == task.listId && $0.section == task.sectionId }) {
+                    runs[at].ids.append(task.id)
+                } else {
+                    runs.append((task.listId, task.sectionId, [task.id]))
+                }
+            }
+            freeze = runs
+        } else {
+            freeze = []
+        }
+        var moves: [(id: String, list: String, section: String, before: String?, project: String??)] = []
+        for task in moving {
+            let list = group.listId ?? task.listId
+            let section = target.flatMap { $0.listId == list ? $0.sectionId : nil }
+                ?? (task.listId == list ? task.sectionId : snap.list(list)?.firstSection ?? "")
+            let next = after.first { $0.listId == list && $0.sectionId == section }?.id
+            let project: String?? = byProject ? .some(group.projectId) : task.listId != list ? .some(nil) : nil
+            moves.append((task.id, list, section, next, project))
+        }
+        withAnimation(.snappy(duration: 0.25)) {
+            store.change("move") { doc in
+                for run in freeze { doc.place(run.ids, list: run.list, section: run.section, before: nil) }
+                for move in moves {
+                    doc.place([move.id], list: move.list, section: move.section, before: move.before)
+                    if let project = move.project {
+                        var p = TaskPatch()
+                        p.project = .some(project)
+                        doc.updateTask(move.id, p)
+                    }
+                }
+            }
+        }
+        if wasSorted {
+            setSort(.manual, for: place)
+            banner = "sorted by hand now"
+        }
+    }
+
+    /// A sublist item dragged: before `before` in `task`'s sublist (or last), from whichever
+    /// task's it was.
+    func moveSubtask(_ item: String, from source: String, to task: String, before: String?) {
+        guard item != before, let from = snap.task(source), let to = snap.task(task),
+              let moving = from.subtasks.first(where: { $0.id == item }) else { return }
+        var items = (source == task ? from.subtasks : to.subtasks).filter { $0.id != item }
+        items.insert(moving, at: before.flatMap { b in items.firstIndex { $0.id == b } } ?? items.count)
+        let remaining = from.subtasks.filter { $0.id != item }
+        withAnimation(.snappy(duration: 0.22)) {
+            store.change("move sublist item") { doc in
+                if source != task {
+                    var p = TaskPatch()
+                    p.subtasks = remaining
+                    doc.updateTask(source, p)
+                }
+                var p = TaskPatch()
+                p.subtasks = items
+                doc.updateTask(task, p)
+            }
+        }
+    }
+
+    // MARK: - renaming what isn't a list
+
+    /// A tag, renamed on every task that has it.
+    func renameTag(_ old: String, to new: String) {
+        let new = new.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+            .replacingOccurrences(of: " ", with: "-")
+        guard !new.isEmpty, new != old else { return }
+        let ids = snap.tasks.filter { $0.tags.contains { $0.caseInsensitiveCompare(old) == .orderedSame } }.map(\.id)
+        store.update(ids, "rename tag") { task in
+            var p = TaskPatch()
+            p.tags = TaskModel.tags(task.tags.map { $0.caseInsensitiveCompare(old) == .orderedSame ? new : $0 })
+            return p
+        }
+        if place == .tag(old) { place = .tag(new) }
+    }
+
+    /// A timer's name.
+    func renameTimer(_ id: String, to name: String) {
+        let name = name.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, var timer = snap.timers.first(where: { $0.id == id }) else { return }
+        timer.label = name
+        store.change("rename timer") { $0.putTimer(timer) }
+    }
 
     func addSection(to list: String) {
         let id = UID.make()

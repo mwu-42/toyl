@@ -114,6 +114,14 @@ It's the v3 format Oyl's to-do store reads, grown:
   `/event`, and `/timer` with no task named, at the start of quick add (the + lines, quick entry, the phone, `toyl add`,
   add_task too). What it'll make shows under the field first; Tab finishes a half-typed word. Named: made at once;
   alone: made ready to name. The phone does lists, projects, groups and timers only.
+- **Everything reorders by dragging** (`Reorder.swift`: `toylDrag` says what's being dragged, `columnDrop` shows a
+  line above or below by the pointer's half, or lights the row to drop into). Payloads are `Drag` strings
+  (`toyl:`, `toyl-list:`, `toyl-group:`, `toyl-filter:`, `toyl-place:`, `toyl-project:`, `toyl-sub:`…). Tasks:
+  `AppModel.reorder`, which freezes what's shown into hand order and switches the place to "by hand" the first time;
+  where lists mix (today, tags) a task keeps its list. One undo step per drag. The fixed places' order is
+  `placeOrder` (⌘1–6 follow). Tags and timers aren't reordered (tags have no order of their own).
+- **Double-click any name to change it** (lists, projects, groups, filters, tags, sublist items, timers, titles,
+  the page title). Rows whose first click already does something use `DoubleClick.second`, so it stays instant.
 - **A row's sublist "add" line is hidden** until asked for (right-click › add to its sublist).
 - **Plain words** in what toyl says: no "puts it back"-style phrasing ("deleted", "restored").
 - **The last action** (`banner`) shows at the top right under the title and fades after a few seconds.

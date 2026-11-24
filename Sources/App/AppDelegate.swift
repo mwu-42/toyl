@@ -267,8 +267,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc func openAgents() { AgentDocs.write(); NSWorkspace.shared.open(Paths.agents) }
     @objc func openFolder() { model.reveal(Paths.data) }
 
+    /// ⌘1–6: the fixed places, in the sidebar's order.
     @objc func go(_ sender: NSMenuItem) {
-        let places: [Place] = [.anytime, .inbox, .today, .inProgress, .ideas, .timers]
+        let places = model.placeOrder
         guard places.indices.contains(sender.tag) else { return }
         showMain()
         model.place = places[sender.tag]
@@ -282,6 +283,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                                       #selector(someday), #selector(focusTimer), #selector(stopwatch), #selector(deleteTasks),
                                       #selector(copyForAgent), #selector(editTitle), #selector(blockOnCalendar), #selector(findTime), #selector(breakDown)]
         guard let action = item.action else { return true }
+        if action == #selector(go(_:)), model.placeOrder.indices.contains(item.tag) { item.title = model.title(model.placeOrder[item.tag]) }
         if needsTasks.contains(action) {
             if typing || model.selection.isEmpty { return false }
             if action == #selector(findTime) { return model.calendar.connected && model.selectedTask?.duration != nil }

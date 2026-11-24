@@ -321,7 +321,133 @@ enum KeysTry {
             spin(0.3)
             check("…named", model.snap.lists.contains { $0.name == "books" })
 
+            reordering()
             return finish()
+        }
+
+        /// What a drop does (the drags themselves can't be made off screen): tasks, lists, groups,
+        /// filters, places, projects, sublist items; and renaming tags and timers.
+        func reordering() {
+            check("drag kinds read", Drag.kind("toyl:a,b") == "tasks" && Drag.kind("toyl-list:x") == "list" && Drag.kind("hello") == "text"
+                  && Drag.pair("toyl-sub:t|s").map { $0.0 == "t" && $0.1 == "s" } == true)
+
+            // Tasks in a list sorted "auto": one dragged above a dated one; the list is sorted by hand from then on.
+            let list = model.newList("order", rename: false)
+            spin(0.2)
+            let a = model.store.add({ var d = TaskDraft(title: "alpha"); d.listId = list; d.due = Day.today(); return d }())
+            let b = model.store.add({ var d = TaskDraft(title: "bravo"); d.listId = list; return d }())
+            let c = model.store.add({ var d = TaskDraft(title: "charlie"); d.listId = list; return d }())
+            model.place = .list(list)
+            model.setSort(.auto, for: .list(list))
+            spin(0.3)
+            func titles() -> [String] { model.visible.map(\.title) }
+            check("auto puts the dated one first", titles().first == "alpha", "\(titles())")
+            guard let group = model.groups.first(where: { $0.tasks.contains { $0.id == c } }) else { return check("a group", false) }
+            model.reorder([c], in: group, before: a)
+            spin(0.3)
+            check("a task dragged above another goes there", titles() == ["charlie", "alpha", "bravo"], "\(titles())")
+            check("…and the list is sorted by hand now", model.sortMode(.list(list)) == .manual && model.banner == "sorted by hand now")
+            if let group = model.groups.first(where: { $0.tasks.contains { $0.id == a } }) {
+                model.reorder([a], in: group, before: nil)
+                spin(0.3)
+                check("one dragged below the last goes last", titles() == ["charlie", "bravo", "alpha"], "\(titles())")
+            }
+            model.store.undoManager.undo()
+            spin(0.3)
+            check("⌘Z undoes a drag in one step", titles() == ["charlie", "alpha", "bravo"], "\(titles())")
+
+            // Into a project: dropped among a project's tasks, it joins.
+            let project = model.newProject(in: list, name: "trip", rename: false)
+            model.setProject(project, list: list, for: [b])
+            spin(0.3)
+            if let inProject = model.groups.first(where: { $0.projectId == project }) {
+                model.reorder([c], in: inProject, before: b)
+                spin(0.3)
+                check("dropped in a project's tasks, it joins the project", model.snap.task(c)?.project == project)
+            }
+
+            // Lists: into a group, and in order.
+            let snap0 = model.snap
+            let group1 = model.newGroup("first", rename: false)
+            let group2 = model.newGroup("second", rename: false)
+            spin(0.2)
+            model.moveList(list, before: nil, group: .some(group1))
+            spin(0.2)
+            check("a list dropped on a group goes in it", model.snap.list(list)?.group == group1)
+            if let other = snap0.ownLists.first(where: { $0.id != list && !$0.archived }) {
+                model.moveList(other.id, before: list, group: .some(group1))
+                spin(0.2)
+                let inGroup = model.snap.ownLists.filter { $0.group == group1 }.map(\.id)
+                check("a list dropped above another goes before it, in its group", inGroup == [other.id, list], "\(inGroup)")
+            }
+            model.moveList(list, before: nil, group: .some(nil))
+            spin(0.2)
+            check("dropped on \"lists\", out of its group", model.snap.list(list)?.group == nil)
+            model.moveGroup(group2, before: group1)
+            spin(0.2)
+            let groups = model.snap.groups.map(\.id)
+            check("groups reorder", (groups.firstIndex(of: group2) ?? 9) < (groups.firstIndex(of: group1) ?? 0))
+
+            // Filters.
+            model.store.change("f") { $0.addFilter(name: "one", query: "a", id: "f1"); $0.addFilter(name: "two", query: "b", id: "f2") }
+            spin(0.2)
+            model.moveFilter("f2", before: "f1")
+            spin(0.2)
+            let filters = model.snap.filters.map(\.id).filter { $0 == "f1" || $0 == "f2" }
+            check("filters reorder", filters == ["f2", "f1"], "\(filters)")
+
+            // The fixed places (and ⌘1–6 with them).
+            model.movePlace(.timers, before: .anytime)
+            check("places reorder", model.placeOrder.first == .timers && model.placeOrder.count == 6)
+            model.movePlace(.timers, before: nil)
+            check("…and back", model.placeOrder.last == .timers)
+
+            // Projects in a list.
+            let second = model.newProject(in: list, name: "move", rename: false)
+            spin(0.2)
+            model.moveProject(second, in: list, before: project)
+            spin(0.2)
+            check("projects reorder", model.snap.list(list)?.projects.map(\.id) == [second, project])
+
+            // Sublist items: within a task, and onto another.
+            var p = TaskPatch()
+            p.subtasks = [Subtask(title: "one"), Subtask(title: "two"), Subtask(title: "three")]
+            model.store.update(a, "s", p)
+            spin(0.2)
+            let items = model.snap.task(a)?.subtasks ?? []
+            if items.count == 3 {
+                model.moveSubtask(items[2].id, from: a, to: a, before: items[0].id)
+                spin(0.2)
+                check("sublist items reorder", model.snap.task(a)?.subtasks.map(\.title) == ["three", "one", "two"])
+                model.moveSubtask(items[1].id, from: a, to: b, before: nil)
+                spin(0.2)
+                check("…and move onto another task", model.snap.task(a)?.subtasks.map(\.title) == ["three", "one"]
+                      && model.snap.task(b)?.subtasks.map(\.title) == ["two"])
+            }
+
+            // Renaming a tag and a timer.
+            var t = TaskPatch()
+            t.tags = ["errand"]
+            model.store.update(b, "t", t)
+            spin(0.2)
+            model.renameTag("errand", to: "errands")
+            spin(0.2)
+            check("renaming a tag changes it on its tasks", model.snap.task(b)?.tags == ["errands"])
+            if let timer = model.snap.timers.first {
+                model.renameTimer(timer.id, to: "tea")
+                spin(0.2)
+                check("renaming a timer", model.snap.timers.first { $0.id == timer.id }?.label == "tea")
+            }
+
+            // Mixed lists (today): a task keeps its list when dragged.
+            let d = model.store.add({ var x = TaskDraft(title: "delta"); x.listId = ListModel.inbox; x.due = Day.today(); return x }())
+            model.place = .today
+            spin(0.3)
+            if let today = model.groups.first(where: { $0.tasks.contains { $0.id == d } }) {
+                model.reorder([d], in: today, before: a)
+                spin(0.3)
+                check("dragged in today, it stays in its own list", model.snap.task(d)?.listId == ListModel.inbox)
+            }
         }
 
         func finish() -> Int32 {

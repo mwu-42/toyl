@@ -819,7 +819,7 @@ private struct EventBlock: View {
         .onHover { hovering = $0 }
         .onTapGesture { showing = true }
         .popover(isPresented: $showing, arrowEdge: .leading) { EventCard(model: model, event: event) }
-        .draggable("toyl-event:" + event.calendarId + "|" + event.eventId) { EventDragPreview(event: event) }
+        .toylDrag(model, "toyl-event:" + event.calendarId + "|" + event.eventId) { EventDragPreview(event: event) }
         .help("drag onto a task to tie it to this event")
     }
 }
@@ -876,7 +876,7 @@ private struct TaskBlock: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture { model.reveal(task: task.id) }
-        .draggable("toyl:" + task.id) { TaskDragPreview(title: model.display(task.title)) }
+        .toylDrag(model, "toyl:" + task.id) { TaskDragPreview(title: model.display(task.title)) }
         .contextMenu {
             Button("show task") { model.reveal(task: task.id) }
             Button("add to google calendar…") { model.addToCalendar(task) }
@@ -935,7 +935,7 @@ private struct AllDaySection: View {
                             }
                             .contentShape(Rectangle())
                             .onTapGesture { model.reveal(task: task.id) }
-                            .draggable("toyl:" + task.id) { TaskDragPreview(title: model.display(task.title)) }
+                            .toylDrag(model, "toyl:" + task.id) { TaskDragPreview(title: model.display(task.title)) }
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
@@ -975,7 +975,7 @@ private struct AllDayChip: View {
         .contentShape(Rectangle())
         .onTapGesture { showing = true }
         .popover(isPresented: $showing, arrowEdge: .leading) { EventCard(model: model, event: event) }
-        .draggable("toyl-event:" + event.calendarId + "|" + event.eventId) { EventDragPreview(event: event) }
+        .toylDrag(model, "toyl-event:" + event.calendarId + "|" + event.eventId) { EventDragPreview(event: event) }
     }
 }
 

@@ -489,6 +489,23 @@ struct Doc {
         deleteList(id, keepTasks: true, now: now)
     }
 
+    /// Moves an entry of one of the file's arrays (lists, groups, filters) to come before
+    /// `before` (or last).
+    private mutating func move(_ key: String, _ id: String, before: String?) {
+        var entries = json[key] as? [Any] ?? []
+        guard let from = entries.firstIndex(where: { ($0 as? [String: Any])?["id"] as? String == id }) else { return }
+        let moving = entries.remove(at: from)
+        let to = before.flatMap { b in entries.firstIndex { ($0 as? [String: Any])?["id"] as? String == b } } ?? entries.count
+        entries.insert(moving, at: to)
+        json[key] = entries
+    }
+
+    /// Moves a group of lists to come before `before` (or last).
+    mutating func moveGroup(_ id: String, before: String?) { move("groups", id, before: before) }
+
+    /// Moves a saved filter to come before `before` (or last).
+    mutating func moveFilter(_ id: String, before: String?) { move("filters", id, before: before) }
+
     /// Moves a list to come before `before` (or last), among all of them.
     mutating func moveList(_ id: String, before: String?) {
         var lists = json["lists"] as? [Any] ?? []

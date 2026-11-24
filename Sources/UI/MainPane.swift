@@ -69,14 +69,41 @@ struct Notice: View {
 
 // MARK: - header
 
+extension Header {
+    /// The name the title shows, if it can be changed (a list of your own, a saved filter).
+    var titleName: String? {
+        switch model.place {
+        case .list(let id): return model.snap.list(id).flatMap { $0.isSpecial ? nil : $0.name }
+        case .filter(let id): return model.snap.filters.first { $0.id == id }?.name
+        default: return nil
+        }
+    }
+
+    func renameTitle(to name: String) {
+        switch model.place {
+        case .list(let id): model.renameList(id, to: name)
+        case .filter(let id): model.renameFilter(id, to: name)
+        default: break
+        }
+    }
+}
+
 struct Header: View {
     @ObservedObject var model: AppModel
+    @Local private var renaming = false
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 14) {
-            Text(model.title(model.place))
-                .font(Theme.title)
-                .lineLimit(1)
+            // A list's or a filter's name: double-click to change it.
+            if renaming, let name = titleName {
+                RenameField(name: name, font: Theme.nsFont(30, bold: true)) { renameTitle(to: $0) } done: { renaming = false }
+                    .frame(maxWidth: 420)
+            } else {
+                Text(model.title(model.place))
+                    .font(Theme.title)
+                    .lineLimit(1)
+                    .onTapGesture(count: 2) { if titleName != nil { renaming = true } }
+            }
             Spacer(minLength: 10)
             if model.place == .inbox || model.place == .anytime {
                 // Autosort: a small wand that files everything in the inbox where it belongs.
@@ -366,27 +393,34 @@ struct TaskListView: View {
     }
 }
 
-/// A heading over a run of tasks (a section, a list, a day). Tasks dropped on it go to its end.
+/// A heading over a run of tasks (a list, a project, a day). Tasks dropped on it go to its end.
+/// A list's or a project's heading drags to reorder them, and a double-click renames it.
 struct GroupHeading: View {
     @ObservedObject var model: AppModel
     let group: TaskGroup
     @Local private var targeted = false
     @Local private var renaming = false
 
+    /// The list it heads, when it's a list's heading (in all, grouped by list).
+    private var headsList: String? { group.id.hasPrefix("list:") ? group.listId : nil }
+
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             if let project = group.projectId, let list = group.listId, renaming || model.renaming == "project:" + project {
-                RenameField(name: group.title ?? "") { name in model.renameProject(project, in: list, to: name) } done: {
+                RenameField(name: group.title ?? "", font: Theme.nsFont(21, bold: true)) { name in model.renameProject(project, in: list, to: name) } done: {
                     renaming = false
                     if model.renaming == "project:" + project { model.renaming = nil }
                 }
-                .font(Theme.font(21, bold: true))
+            } else if let list = headsList, renaming, let name = model.snap.list(list)?.name {
+                RenameField(name: name, font: Theme.nsFont(15, bold: true)) { model.renameList(list, to: $0) } done: { renaming = false }
             } else {
                 if group.big { Image(systemName: "folder").font(.system(size: 14)).foregroundStyle(Theme.accent) }
                 Text(group.title.map(model.display) ?? "")
                     .font(Theme.font(group.big ? 21 : 15, bold: true))
                     .foregroundStyle(Theme.ink)
-                    .onTapGesture(count: 2) { if group.big { renaming = true } }
+                    .onTapGesture(count: 2) {
+                        if group.big || headsList.flatMap({ model.snap.list($0) })?.isSpecial == false { renaming = true }
+                    }
                 if let subtitle = group.subtitle {
                     Text(subtitle).font(Theme.meta).foregroundStyle(Theme.secondary)
                 }
@@ -406,16 +440,73 @@ struct GroupHeading: View {
         .padding(.bottom, group.big ? 8 : 6)
         .overlay(alignment: .bottom) { Rectangle().fill(targeted ? Theme.accent : Theme.rule).frame(height: targeted ? 2 : 1).padding(.horizontal, 10) }
         .contentShape(Rectangle())
-        .dropDestination(for: String.self) { items, _ in
-            guard let list = group.listId else { return false }
-            return model.drop(items, list: list, section: group.sectionId, before: nil, project: group.big ? .some(group.projectId) : nil)
-        } isTargeted: { targeted = $0 }
+        .modifier(HeadingDrag(model: model, payload: payload, title: group.title.map(model.display) ?? ""))
+        .columnDrop(model, lit: $targeted, inset: 10, accepts: accepts, reorders: { payload != nil && Drag.kind($0) == Drag.kind(payload) }) { items, spot in
+            if spot == .into {
+                guard let list = group.listId else { return false }
+                return model.drop(items, list: list, section: group.sectionId, before: nil, project: group.big ? .some(group.projectId) : nil)
+            }
+            return reorder(items, spot)
+        }
         .contextMenu {
             if group.listId != nil { Button("new task here") { withAnimation(.snappy(duration: 0.2)) { model.addingTo = group.id } } }
             if let project = group.projectId, let list = group.listId {
                 Button("rename project") { renaming = true }
                 Button("delete project (its tasks stay in the list)") { model.deleteProject(project, in: list) }
+            } else if let list = headsList, model.snap.list(list)?.isSpecial == false {
+                Button("rename list") { renaming = true }
             }
+        }
+    }
+
+    /// What it's dragged as: a project's heading, or a list's (in all).
+    private var payload: String? {
+        if group.big, let project = group.projectId, let list = group.listId { return "toyl-project:\(list)|\(project)" }
+        if let list = headsList { return "toyl-list:" + list }
+        return nil
+    }
+
+    private func accepts(_ dragging: String) -> Bool {
+        let kind = Drag.kind(dragging)
+        if let payload, kind == Drag.kind(payload) {
+            // A project only among its own list's.
+            if kind == "project" { return Drag.pair(dragging)?.0 == group.listId }
+            return true
+        }
+        return group.listId != nil && (kind == "tasks" || kind == "text")
+    }
+
+    /// A list's or a project's heading dropped above or below this one.
+    private func reorder(_ items: [String], _ spot: RowSpot) -> Bool {
+        guard let item = items.first else { return false }
+        let snap = model.snap
+        if Drag.kind(item) == "project", let (list, moving) = Drag.pair(item), let here = group.projectId, list == group.listId {
+            let projects = snap.list(list)?.projects.map(\.id) ?? []
+            let next = projects.firstIndex(of: here).flatMap { $0 + 1 < projects.count ? projects[$0 + 1] : nil }
+            model.moveProject(moving, in: list, before: spot == .above ? here : next)
+            return true
+        }
+        if Drag.kind(item) == "list", let here = headsList {
+            let lists = snap.lists.map(\.id)
+            let next = lists.firstIndex(of: here).flatMap { $0 + 1 < lists.count ? lists[$0 + 1] : nil }
+            model.moveList(Drag.value(item), before: spot == .above ? here : next, group: nil)
+            return true
+        }
+        return false
+    }
+}
+
+/// A heading that can be dragged (a list's, a project's); others can't.
+struct HeadingDrag: ViewModifier {
+    let model: AppModel
+    let payload: String?
+    let title: String
+
+    func body(content: Content) -> some View {
+        if let payload {
+            content.toylDrag(model, payload) { SidebarDragPreview(text: title) }
+        } else {
+            content
         }
     }
 }

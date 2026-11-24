@@ -33,6 +33,12 @@ open behind what you're doing (in front only if you were using toyl), never taki
   - drag the calendar's edge to make it wider or narrower, wherever it sits
   - drag a panel's grip (≡, at its top) onto another to swap them · right-click the grip to move it left or right
   - drag the line between panels to resize them · double-click it for the usual width
+- ✋ **drag anything to reorder it**: a line shows where it'll go (above or below, by which half you're over)
+  - tasks: a page sorted another way is sorted by hand from your first drag, keeping what you saw · dropped among a project's tasks, a task joins it
+  - in the sidebar: lists (drop one on a group to put it in, on "lists" to take it out), groups, saved filters, and the places themselves (⌘1–6 follow)
+  - in the page: projects by their headings, lists by theirs in all · sublist items, within a task or onto another
+- ✏️ **double-click any name to change it**: a task's title, a list (in the sidebar, its heading, or the big title), a project, a group, a filter,
+  a tag (on every task that has it), a sublist item, a timer. Return keeps it, Escape doesn't.
 - 👆 **swipe a task** (two fingers on the trackpad, as in Mail; or a finger on the phone). it pulls freely, then harder and harder, like a rubber band
   - soft right: into its list's **in progress** (or out of it) · hard right: in progress, with a timer going
   - soft left: a **timer** on it (or, if one's going, stop it) · hard left: delete (⌘z undoes it)
