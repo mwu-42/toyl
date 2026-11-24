@@ -1,14 +1,13 @@
 import SwiftUI
 
-/// A task: its circle, its title (double-click, or Return, to change it), and under it in italics
-/// what's known about it. Drag it anywhere; drop tasks on it to put them before it.
+/// A task: its circle, its title (double-click, or ⌘E, to change it), and under it in gray what's
+/// known about it. Drag it anywhere; drop tasks on it to put them before it.
 struct TaskRow: View {
     @ObservedObject var model: AppModel
     let task: TaskModel
     let group: TaskGroup
     let now: Date
     @Local private var hovering = false
-    @Local private var draft = ""
     @Local private var targeted = false
 
     nonisolated(unsafe) private static var lastClick: (id: String, at: Date)?
@@ -26,10 +25,7 @@ struct TaskRow: View {
                 .help(task.done ? "uncheck" : "check off")
             VStack(alignment: .leading, spacing: 2) {
                 if editing {
-                    PlainField(text: $draft, font: Theme.nsFont(16), focus: 1,
-                               onSubmit: { commit() }, onEscape: { model.editing = nil; model.focusList += 1 }, onEnd: { commit() })
-                        .frame(height: 20)
-                        .onAppear { draft = task.title }
+                    TitleEditor(model: model, task: task)
                 } else {
                     Text(model.display(task.title))
                         .font(Theme.body)
@@ -88,21 +84,10 @@ struct TaskRow: View {
             model.editing = task.id
         } else {
             model.select(task.id, command: flags.contains(.command), shift: flags.contains(.shift))
-            model.focusList += 1
+            // The list has the keys now (a field that had them lets go, keeping what was typed).
+            model.leaveTyping()
         }
         Self.lastClick = (task.id, at)
-    }
-
-    private func commit() {
-        guard model.editing == task.id else { return }
-        model.editing = nil
-        let title = draft.trimmingCharacters(in: .whitespaces)
-        if !title.isEmpty, title != task.title {
-            var p = TaskPatch()
-            p.title = title
-            model.store.update(task.id, "rename", p)
-        }
-        model.focusList += 1
     }
 
     /// What's known about it, in a line: when, its aim, how it repeats, how long it takes, the
@@ -302,9 +287,9 @@ struct Sublist: View {
             if adding {
                 HStack(spacing: 8) {
                     Image(systemName: "plus").font(.system(size: 9)).foregroundStyle(Theme.faint).frame(width: 13)
-                    PlainField(text: $text, placeholder: "add", font: Theme.nsFont(15), focus: 1, onSubmit: add,
-                               onEscape: { close() },
-                               onEnd: { if text.trimmingCharacters(in: .whitespaces).isEmpty { close() } })
+                    PlainField(text: $text, placeholder: "add", font: Theme.nsFont(15), name: "sublist", autofocus: true, onSubmit: add,
+                               onEscape: { close(leave: true) }, onTab: { true },
+                               onEnd: { if text.trimmingCharacters(in: .whitespaces).isEmpty { close(leave: false) } })
                         .frame(height: 19)
                 }
             }
@@ -312,16 +297,20 @@ struct Sublist: View {
         .animation(.snappy(duration: 0.22), value: task.subtasks.map(\.id))
     }
 
-    private func close() {
+    /// Closed by a key, it lets go of the keys too; closed by a click elsewhere, the keys are
+    /// already where the click put them.
+    private func close(leave: Bool) {
         text = ""
+        if leave { model.leaveTyping() }
         withAnimation(.snappy(duration: 0.2)) { if model.addingSublist == task.id { model.addingSublist = nil } }
-        model.focusList += 1
     }
 
+    /// Return adds and stays for the next; Return with nothing typed closes it.
     private func add() {
         let title = text.trimmingCharacters(in: .whitespaces)
+        guard !title.isEmpty else { return close(leave: true) }
         text = ""
-        guard !title.isEmpty, let current = model.snap.task(task.id) else { return }
+        guard let current = model.snap.task(task.id) else { return }
         var p = TaskPatch()
         p.subtasks = current.subtasks + [Subtask(title: title)]
         model.store.update(task.id, "add to sublist", p)
@@ -406,5 +395,46 @@ struct TaskDragPreview: View {
         .overlay(Capsule().strokeBorder(Theme.rule, lineWidth: 1))
         .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
         .padding(8)
+    }
+}
+
+/// A task's title being changed in its row. It starts with the title in it and the caret at the
+/// end. Return keeps it, Escape doesn't; however else it ends (a click on another task, another
+/// place, ↑ or ↓ to the next task), what was typed is kept.
+struct TitleEditor: View {
+    @ObservedObject var model: AppModel
+    let task: TaskModel
+    @Local private var draft: String
+    @Local private var finished = false
+
+    init(model: AppModel, task: TaskModel) {
+        self.model = model
+        self.task = task
+        _draft = Local(initialValue: task.title)
+    }
+
+    var body: some View {
+        PlainField(text: $draft, font: Theme.nsFont(16), name: "title", autofocus: true,
+                   onSubmit: { finish(keep: true, leave: true) },
+                   onEscape: { finish(keep: false, leave: true) },
+                   onTab: { true },
+                   onUp: { finish(keep: true, leave: true); model.moveSelection(-1); return true },
+                   onDown: { finish(keep: true, leave: true); model.moveSelection(1); return true },
+                   onEnd: { finish(keep: true, leave: false) })
+            .frame(height: 20)
+            .onDisappear { finish(keep: true, leave: false) }
+    }
+
+    private func finish(keep: Bool, leave: Bool) {
+        guard !finished else { return }
+        finished = true
+        let title = draft.trimmingCharacters(in: .whitespaces)
+        if keep, !title.isEmpty, let current = model.snap.task(task.id), title != current.title {
+            var p = TaskPatch()
+            p.title = title
+            model.store.update(task.id, "rename", p)
+        }
+        if leave { model.leaveTyping() }
+        if model.editing == task.id { model.editing = nil }
     }
 }

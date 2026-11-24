@@ -12,6 +12,7 @@ line, and an MCP server (`toyl mcp`).
 ./build.sh --no-install  # just build/toyl.app (don't leave it around: it shows up as a second toyl)
 TOYL_HOME=/tmp/t toyl add "essay fri 5pm #cs"            # a scratch list
 TOYL_HOME=/tmp/t toyl __snapshot today /tmp/today.png   # the window, drawn offscreen
+TOYL_HOME=/tmp/t toyl __keys                            # keys pressed in the window offscreen, each checked
 ```
 
 - **Never open, relaunch or activate the app while working on it.** That includes `open`,
@@ -60,7 +61,7 @@ TOYL_HOME=/tmp/t toyl __snapshot today /tmp/today.png   # the window, drawn offs
     both ways, and imports "todo:" events.
   - `Integrations` (agent links, the hot key, Apple's on-device model), `AppDelegate` (menus,
     windows, `toyl://` links) and `Picture` (`__snapshot`).
-- `Sources/UI`: the views. `Theme` holds the colors, the face and `PlainField`.
+- `Sources/UI`: the views. `Theme` holds the colors, the face, `PlainField` and `Keys`.
 - **Changes are closures on `Doc`**, made twice (on screen, then on the file). Anything random,
   such as a new id or the next repeat's id, is made outside the closure.
 - **`@Local`, not `@State`.** In the macOS 26 SDK `@State` is a macro whose plugin only ships with
@@ -103,6 +104,12 @@ It's the v3 format Oyl's to-do store reads, grown:
 - **Swipes rubber-band** (`AppModel.rubber`): free for 200 points, then harder, never past 360. Soft (110):
   right, in progress; left, a timer (or stop the one going). Hard (240): right, in progress and a timer; left,
   delete. Rows have no timer button: the soft left swipe is it.
+- **The keys are the window's** (`AppModel.watchKeys`, a key watcher, not SwiftUI focus): whenever nothing's being
+  typed, Return starts a new task (the caret in quick add; quick entry with the page hidden), a typed letter starts
+  one, ↑ ↓ move, space shows the description, ⌫ deletes, Escape lets go. ⌘E (or a double-click) edits a title; Return
+  never does. Fields take the caret themselves (`PlainField` `autofocus`, `name`, `focus`) and let go with
+  `Keys.letGo()` only when closed by a key, never on a click elsewhere. A title being typed is kept however it
+  ends, except Escape. `toyl __keys` (with `TOYL_HOME`) presses keys in the window off screen and checks each.
 - **A row's sublist "add" line is hidden** until asked for (right-click › add to its sublist).
 - **Plain words** in what toyl says: no "puts it back"-style phrasing ("deleted", "restored").
 - **The last action** (`banner`) shows at the top right under the title and fades after a few seconds.

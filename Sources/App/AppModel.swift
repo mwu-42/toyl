@@ -74,7 +74,6 @@ final class AppModel: ObservableObject {
     /// Bumped to put the caret in the quick add field, or the filter.
     @Published var focusQuick = 0
     @Published var focusFilter = 0
-    @Published var focusList = 0
     /// Shows what's typed in lower case too.
     @Published var lowercaseAll: Bool { didSet { defaults.set(lowercaseAll, forKey: "lowercaseAll") } }
     /// Autosort's guess for what's being typed into quick add.
@@ -416,7 +415,8 @@ final class AppModel: ObservableObject {
     func moveSelection(_ delta: Int, extend: Bool = false) {
         let tasks = visible
         guard !tasks.isEmpty else { return }
-        let current = anchor.flatMap { id in tasks.firstIndex { $0.id == id } }
+        // Nothing selected (Escape let go of it): from the top (or the foot), not where it was.
+        let current = selection.isEmpty ? nil : anchor.flatMap { id in tasks.firstIndex { $0.id == id } }
         let next = current.map { min(max($0 + delta, 0), tasks.count - 1) } ?? (delta > 0 ? 0 : tasks.count - 1)
         let id = tasks[next].id
         if extend { selection.insert(id) } else { selection = [id] }
@@ -425,6 +425,16 @@ final class AppModel: ObservableObject {
     }
 
     func selectAll() { selection = Set(visible.map(\.id)) }
+
+    /// Coming down into the list (from quick add or the filter): what's selected, if it shows;
+    /// else the first task.
+    func enterList() {
+        let shown = visible
+        guard !shown.contains(where: { selection.contains($0.id) }) else { return }
+        selection = []
+        anchor = nil
+        moveSelection(1)
+    }
 
     // MARK: - changing what's selected
 
@@ -811,6 +821,93 @@ final class AppModel: ObservableObject {
             banner = nil
         }
         return linked
+    }
+
+    // MARK: - the keys
+
+    /// The field the window's Return and typing go to: quick add, or the timers page's field.
+    private var quickName: String { place == .timers ? "timer" : "quick" }
+
+    /// Lets go of the keys from whatever field has them, so the list has them.
+    func leaveTyping() { Keys.letGo() }
+
+    /// Puts the caret in quick add (or the timers page's field), at the end of what's there.
+    /// Whether there was one on screen.
+    @discardableResult
+    func focusQuickAdd() -> Bool {
+        guard let field = InkField.named(quickName) else { return false }
+        field.takeKeys()
+        return true
+    }
+
+    private var keyWatch: Any?
+
+    /// The list's keys, for the whole window whenever nothing's being typed (not only when the
+    /// list happens to have focus):
+    /// - Return: a new task (the caret in quick add; with the page hidden, quick entry)
+    /// - a letter: the start of a new task, typed into quick add
+    /// - ↑ ↓ (⇧ to extend): move the selection; ↑ from the first task goes up into quick add
+    /// - space: the description, shown or hidden · ⌫: delete · Escape: let go of what's selected
+    func watchKeys(in window: NSWindow, quickEntry: @escaping () -> Void) {
+        Keys.window = window
+        guard keyWatch == nil else { return }
+        keyWatch = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak window] event in
+            guard let self, let window else { return event }
+            let taken = MainActor.assumeIsolated { self.listKey(event, in: window, quickEntry: quickEntry) }
+            return taken ? nil : event
+        }
+    }
+
+    /// Whether the key was the list's (and so goes no further).
+    func listKey(_ event: NSEvent, in window: NSWindow, quickEntry: () -> Void, requireKey: Bool = true) -> Bool {
+        guard event.window === window, window.isKeyWindow || !requireKey, window.attachedSheet == nil, NSApp.modalWindow == nil,
+              !(window.firstResponder is NSText) else { return false }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags.contains(.command) || flags.contains(.control) { return false }
+        let shift = flags.contains(.shift)
+        let list = showTasks && place != .timers
+        switch event.keyCode {
+        case 36, 76: // return, enter
+            editing = nil
+            if !showTasks || !focusQuickAdd() { quickEntry() }
+            return true
+        case 126 where list: // up
+            if !shift, let anchor, !selection.isEmpty, visible.first?.id == anchor {
+                selection = []
+                focusQuickAdd()
+            } else {
+                moveSelection(-1, extend: shift)
+            }
+            return true
+        case 125 where list: // down
+            moveSelection(1, extend: shift)
+            return true
+        case 49 where list && !selection.isEmpty: // space
+            setShown(.details, !showInspector)
+            return true
+        case 51 where list && !selection.isEmpty, 117 where list && !selection.isEmpty: // delete
+            deleteSelected()
+            return true
+        case 53: // escape
+            if addingTo != nil || addingSublist != nil {
+                withAnimation(.snappy(duration: 0.2)) { addingTo = nil; addingSublist = nil }
+            } else if !selection.isEmpty {
+                selection = []
+            } else if !filter.isEmpty {
+                filter = ""
+            }
+            return true
+        default:
+            break
+        }
+        // A letter with nothing to type it into: the start of a new task. The field takes the keys
+        // and the letter carries on to it (so accents and other input methods still work).
+        guard showTasks, let typed = event.characters, let first = typed.unicodeScalars.first,
+              !CharacterSet.controlCharacters.contains(first), !(0xF700...0xF8FF).contains(first.value),
+              !typed.trimmingCharacters(in: .whitespaces).isEmpty,
+              let field = InkField.named(quickName) else { return false }
+        field.takeKeys()
+        return !field.hasKeys
     }
 
     // MARK: - swiping (as Mail does, two fingers on the trackpad)

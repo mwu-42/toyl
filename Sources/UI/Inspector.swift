@@ -48,6 +48,9 @@ struct TaskDetail: View {
     /// Notes with links read as words and cards; this is on while they're being changed.
     @Local private var editingNotes = false
     @FocusState private var notesFocused: Bool
+    /// The title or the day being typed in: a change from elsewhere doesn't overwrite it.
+    @Local private var typingTitle = false
+    @Local private var typingDue = false
 
     /// One tap each.
     private var timerLengths: [Int] { TimerEngine.presets }
@@ -66,8 +69,11 @@ struct TaskDetail: View {
                     CheckCircle(done: model.isDone(task), size: 20)
                         .padding(.top, 3)
                         .onTapGesture { model.complete([task.id]) }
-                    PlainField(text: $title, placeholder: "title", font: Theme.nsFont(21, bold: true),
-                               onSubmit: commitTitle, onEnd: commitTitle)
+                    PlainField(text: $title, placeholder: "title", font: Theme.nsFont(21, bold: true), name: "detail-title",
+                               onSubmit: { commitTitle(); model.leaveTyping() },
+                               onEscape: { title = task.title; model.leaveTyping() },
+                               onBegin: { typingTitle = true },
+                               onEnd: { typingTitle = false; commitTitle() })
                         .frame(height: 26)
                 }
                 .padding(.top, 34)
@@ -93,7 +99,8 @@ struct TaskDetail: View {
         .onAppear(perform: fill)
         .onChange(of: task) { _, _ in refill() }
         .onChange(of: notesFocused) { _, focused in if !focused { commitNotes(); editingNotes = false } }
-        .onDisappear { commitNotes() }
+        // Another task picked while this one's being typed in: what was typed is kept.
+        .onDisappear { commitTitle(); commitDue(); commitNotes() }
     }
 
     private func fill() {
@@ -104,9 +111,9 @@ struct TaskDetail: View {
 
     /// What's changed elsewhere (the command line, an agent, Oyl), shown unless it's being typed in.
     private func refill() {
-        title = task.title
+        if !typingTitle { title = task.title }
         if !notesFocused { notes = task.notes }
-        due = dueText
+        if !typingDue { due = dueText }
     }
 
     private var dueText: String {
@@ -120,7 +127,10 @@ struct TaskDetail: View {
         VStack(alignment: .leading, spacing: 9) {
             DetailRow(label: "due", icon: "calendar") {
                 PlainField(text: $due, placeholder: "when", font: Theme.nsFont(15),
-                           onSubmit: commitDue, onEnd: commitDue)
+                           onSubmit: { commitDue(); model.leaveTyping() },
+                           onEscape: { due = dueText; model.leaveTyping() },
+                           onBegin: { typingDue = true },
+                           onEnd: { typingDue = false; commitDue() })
                     .frame(height: 19)
             }
             if let day = task.due {
@@ -467,18 +477,28 @@ struct SublistRow: View {
     @ObservedObject var model: AppModel
     let task: TaskModel
     let item: Subtask
-    @Local private var text = ""
+    @Local private var text: String
     @Local private var hovering = false
+    @Local private var typing = false
+
+    init(model: AppModel, task: TaskModel, item: Subtask) {
+        self.model = model
+        self.task = task
+        self.item = item
+        _text = Local(initialValue: item.title)
+    }
 
     var body: some View {
         HStack(spacing: 8) {
             CheckCircle(done: item.done, size: 14)
                 .onTapGesture { change { $0.done.toggle() } }
             PlainField(text: $text, font: Theme.nsFont(15), color: item.done ? Theme.nsSecondary : Theme.nsInk,
-                       onSubmit: save, onEnd: save)
+                       onSubmit: { save(); model.leaveTyping() },
+                       onEscape: { text = item.title; model.leaveTyping() },
+                       onBegin: { typing = true },
+                       onEnd: { typing = false; save() })
                 .frame(height: 19)
-                .onAppear { text = item.title }
-                .onChange(of: item.title) { _, title in text = title }
+                .onChange(of: item.title) { _, title in if !typing { text = title } }
             if hovering {
                 Quiet(label: "", symbol: "xmark", size: 10) {
                     var p = TaskPatch()

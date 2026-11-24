@@ -115,8 +115,11 @@ struct FilterField: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(Theme.faint)
+            // Return goes down to what's found; Escape clears it and lets go.
             PlainField(text: $model.filter, placeholder: "filter", font: Theme.nsFont(14.5), focus: model.focusFilter,
-                       onSubmit: {}, onEscape: { model.filter = ""; model.focusList += 1 })
+                       onSubmit: { model.leaveTyping(); model.enterList() },
+                       onEscape: { model.filter = ""; model.leaveTyping() },
+                       onDown: { model.leaveTyping(); model.enterList(); return true })
                 .frame(height: 18)
             if !model.filter.isEmpty {
                 Quiet(label: "", symbol: "xmark.circle.fill", size: 12) { model.filter = "" }
@@ -169,41 +172,47 @@ struct ViewMenu: View {
 // MARK: - quick add
 
 /// Type a task as you'd say it; what it's read as shows underneath as you go (and where autosort
-/// would file it). Tab finishes a #name or ~list, or takes autosort's guess. Return adds it.
+/// would file it). Tab finishes a #name or ~list, or takes autosort's guess. Return adds it and
+/// stays for the next; Return with nothing typed, Escape (once to clear, again to leave) or ↓
+/// go back to the list. Return anywhere in the window, or just typing, comes back here.
 struct QuickAdd: View {
     @ObservedObject var model: AppModel
     @Local private var text = ""
 
     var body: some View {
         let parsed = text.isEmpty ? nil : Quick.parse(text, lists: model.snap.lists, weekStart: model.snap.weekStart)
+        let tokens = parsed?.tokens(lists: model.snap.lists) ?? []
+        let guess = parsed.flatMap(suggestion(for:))
+        let finishing = parsed == nil ? nil : completion()
+        let chips = !tokens.isEmpty || guess != nil || finishing != nil
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 10) {
                 Image(systemName: "plus").font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.faint)
-                PlainField(text: $text, placeholder: placeholder, focus: model.focusQuick,
-                           onSubmit: submit, onEscape: { text = ""; model.focusList += 1 }, onTab: complete,
-                           onDown: { model.focusList += 1; model.moveSelection(1); return true })
+                PlainField(text: $text, placeholder: placeholder, name: "quick", focus: model.focusQuick,
+                           onSubmit: submit,
+                           onEscape: { if text.isEmpty { model.leaveTyping() } else { text = "" } },
+                           onTab: { _ = complete(); return true },
+                           onDown: { model.leaveTyping(); model.enterList(); return true })
                     .frame(height: 21)
             }
             .padding(.horizontal, 13)
             .padding(.vertical, 9)
             .background(RoundedRectangle(cornerRadius: 9).fill(Theme.field))
-            if let parsed {
-                let tokens = parsed.tokens(lists: model.snap.lists)
-                let guess = suggestion(for: parsed)
-                let finishing = completion()
-                if !tokens.isEmpty || guess != nil || finishing != nil {
-                    HStack(spacing: 6) {
-                        ForEach(tokens, id: \.self) { token in Chip(text: token.text, tint: tint(token.kind), filled: true) }
-                        if let guess { Chip(text: "→ \(model.display(guess.displayName))?  ⇥", tint: Theme.secondary) }
-                        if let finishing { Chip(text: "⇥ " + finishing.shown, tint: Theme.secondary) }
-                        Spacer()
-                    }
-                    .padding(.leading, 4)
+            if chips {
+                HStack(spacing: 6) {
+                    ForEach(tokens, id: \.self) { token in Chip(text: token.text, tint: tint(token.kind), filled: true) }
+                    if let guess { Chip(text: "→ \(model.display(guess.displayName))?  ⇥", tint: Theme.secondary) }
+                    if let finishing { Chip(text: "⇥ " + finishing.shown, tint: Theme.secondary) }
+                    Spacer()
                 }
+                .padding(.leading, 4)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(.horizontal, 28)
         .padding(.bottom, 12)
+        // What it's read as slides in and out under it, rather than jolting the list.
+        .animation(.snappy(duration: 0.18), value: chips)
     }
 
     private var placeholder: String {
@@ -223,8 +232,10 @@ struct QuickAdd: View {
     }
 
     private func submit() {
-        guard model.quickAdd(text) != nil else { return }
+        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return model.leaveTyping() }
+        let typed = text
         text = ""
+        if model.quickAdd(typed) == nil { text = typed }
     }
 
     /// Autosort's guess, when nothing's been said about a list and it's fairly sure.
@@ -271,9 +282,10 @@ struct QuickAdd: View {
 
 // MARK: - the list
 
+/// The tasks under their headings. Its keys (Return, the arrows, space, delete) are the window's,
+/// whenever nothing's being typed: see `AppModel.watchKeys`.
 struct TaskListView: View {
     @ObservedObject var model: AppModel
-    @FocusState private var focused: Bool
 
     var body: some View {
         let groups = model.groups
@@ -310,17 +322,11 @@ struct TaskListView: View {
                     }
                     Color.clear.frame(height: 60)
                         .contentShape(Rectangle())
-                        .onTapGesture { model.selection = []; model.editing = nil }
+                        .onTapGesture { model.selection = []; model.editing = nil; model.leaveTyping() }
                 }
                 .padding(.horizontal, 18)
             }
             .scrollIndicators(.automatic)
-            .focusable()
-            .focused($focused)
-            .focusEffectDisabled()
-            .onKeyPress(phases: .down) { press in handle(press) }
-            .onChange(of: model.focusList) { focused = true }
-            .onReceive(NotificationCenter.default.publisher(for: .toylTyping)) { _ in focused = false }
             .onChange(of: model.anchor) { _, id in
                 if let id { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) } }
             }
@@ -334,31 +340,6 @@ struct TaskListView: View {
         case .list(let id): return id
         case .inbox: return ListModel.inbox
         default: return nil
-        }
-    }
-
-    private func handle(_ press: KeyPress) -> KeyPress.Result {
-        // Typing in a field inside the list (a + line, a sublist's add line, a title): the keys are
-        // the text's, never the list's (space would open the description; delete, delete tasks).
-        guard model.editing == nil, !(NSApp.keyWindow?.firstResponder is NSText) else { return .ignored }
-        let shift = press.modifiers.contains(.shift)
-        switch press.key {
-        case .upArrow: model.moveSelection(-1, extend: shift); return .handled
-        case .downArrow: model.moveSelection(1, extend: shift); return .handled
-        case .return:
-            if let task = model.selectedTask { model.editing = task.id; return .handled }
-            return .ignored
-        case .space:
-            if !model.selection.isEmpty { model.showInspector = true; return .handled }
-            return .ignored
-        case .delete, .deleteForward:
-            if !model.selection.isEmpty { model.deleteSelected(); return .handled }
-            return .ignored
-        case .escape:
-            model.selection = []
-            return .handled
-        default:
-            return .ignored
         }
     }
 }
@@ -418,8 +399,8 @@ struct GroupHeading: View {
 }
 
 /// A line under a heading, from its +: what's typed goes straight into that list (or section),
-/// read as quick add reads it. Return adds and stays for another; Escape, or clicking away with
-/// nothing typed, closes it.
+/// read as quick add reads it. Return adds and stays for another; Return with nothing typed,
+/// Escape, or clicking away with nothing typed, closes it.
 struct AddUnder: View {
     @ObservedObject var model: AppModel
     let group: TaskGroup
@@ -428,8 +409,9 @@ struct AddUnder: View {
     var body: some View {
         HStack(spacing: 11) {
             Image(systemName: "plus").font(.system(size: 11)).foregroundStyle(Theme.faint).frame(width: 17)
-            PlainField(text: $text, placeholder: "new task", focus: 1, onSubmit: add, onEscape: close,
-                       onEnd: { if text.trimmingCharacters(in: .whitespaces).isEmpty { close() } })
+            PlainField(text: $text, placeholder: "new task", name: "under", autofocus: true, onSubmit: add,
+                       onEscape: { close(leave: true) }, onTab: { true },
+                       onEnd: { if text.trimmingCharacters(in: .whitespaces).isEmpty { close(leave: false) } })
                 .frame(height: 20)
         }
         .padding(.vertical, 7)
@@ -438,13 +420,16 @@ struct AddUnder: View {
 
     private func add() {
         let typed = text
+        guard !typed.trimmingCharacters(in: .whitespaces).isEmpty else { return close(leave: true) }
         text = ""
-        model.quickAdd(typed, section: group)
+        if model.quickAdd(typed, section: group) == nil { text = typed }
     }
 
-    private func close() {
+    /// Closed by a key, it lets go of the keys too; closed by a click elsewhere, the keys are
+    /// already where the click put them.
+    private func close(leave: Bool) {
+        if leave { model.leaveTyping() }
         withAnimation(.snappy(duration: 0.2)) { if model.addingTo == group.id { model.addingTo = nil } }
-        model.focusList += 1
     }
 }
 

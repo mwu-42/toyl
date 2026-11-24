@@ -44,6 +44,12 @@ open behind what you're doing (in front only if you were using toyl), never taki
   - a task with a sublist can **turn into a project**: right-click › turn into a project (or "make it a project" by its sublist). each item becomes a task in it
 - ☑️ **sublists**: a task's sublist shows right under it. right-click › add to its sublist (or use its description) to add · ✨ "break it down" makes one with apple intelligence.
 - 💡 **ideas**: loose ideas (`?` first) and anything put off (`/idea`, or drag it onto ideas). it keeps its list.
+- ↩️ **the keys**: press Return anywhere to start a new task, or just start typing
+  - Return adds it and stays for the next · Return with nothing typed, Escape or ↓ go back to the list
+  - ↑ ↓ move through the list (⇧ to take more) · ↑ from the top goes into quick add
+  - double-click a title or press ⌘E to change it: Return keeps it, Escape doesn't, clicking away keeps it
+  - space shows or hides the description · ⌫ deletes · Escape lets go of what's selected
+  - the + lines (under a heading, in a sublist) take the caret at once, stay for the next, and close on Return with nothing typed
 - ⌨️ **quick add** reads what you type: `essay draft fri 5pm #cs ~2h !`
   - `#cs` list or tag · `~list` a list · `?` an idea
   - `fri 5pm`, `tomorrow`, `nov 30`, `by fri`, `next week` when it's due

@@ -57,19 +57,30 @@ enum Theme {
 /// A field with nothing round it (no bezel, no focus ring), in the theme's face, that says when
 /// Return, Escape, Tab and the arrows are pressed. SwiftUI's own field can't be styled this
 /// plainly, or hand those keys over.
+///
+/// The caret: `autofocus` takes it when the field appears (at the end of what's there, or with it
+/// all selected); `focus` takes it again each time the number changes. A `name` lets the window
+/// find the field (Return and typing in the list go to the one named "quick"). Escape, unless
+/// asked for, just lets go of the keys.
 struct PlainField: NSViewRepresentable {
     @Binding var text: String
     var placeholder = ""
     var font = Theme.nsFont(16)
     var color = Theme.nsInk
+    var name: String?
+    var autofocus = false
+    var selectAll = false
     /// Changed to put the caret here.
     var focus = 0
     var onSubmit: (() -> Void)?
+    /// ⌘Return (else it's Return).
+    var onCommandSubmit: (() -> Void)?
     var onEscape: (() -> Void)?
     var onTab: (() -> Bool)?
     var onBackTab: (() -> Bool)?
     var onUp: (() -> Bool)?
     var onDown: (() -> Bool)?
+    var onBegin: (() -> Void)?
     var onEnd: (() -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -88,22 +99,35 @@ struct PlainField: NSViewRepresentable {
         field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         apply(to: field)
         field.stringValue = text
+        field.name = name
+        field.selectsAllOnFocus = selectAll
+        field.focusOnAppear = autofocus
+        field.onCommandReturn = onCommandSubmit ?? onSubmit
         context.coordinator.focus = focus
-        if focus > 0 { DispatchQueue.main.async { field.window?.makeFirstResponder(field) } }
         return field
     }
 
     func updateNSView(_ field: NSTextField, context: Context) {
         context.coordinator.parent = self
         apply(to: field)
-        if field.stringValue != text { field.stringValue = text }
+        // Only what's been changed from outside (cleared after adding, a tab finished): never while
+        // letters are being put together (an accent held, a Japanese word), which it would undo.
+        if field.stringValue != text, (field.currentEditor() as? NSTextView)?.hasMarkedText() != true {
+            field.stringValue = text
+            if let editor = field.currentEditor() { editor.selectedRange = NSRange(location: (text as NSString).length, length: 0) }
+        }
+        if let ink = field as? InkField {
+            if ink.name != name { ink.name = name }
+            ink.onCommandReturn = onCommandSubmit ?? onSubmit
+        }
         if focus != context.coordinator.focus {
             context.coordinator.focus = focus
-            DispatchQueue.main.async {
-                field.window?.makeFirstResponder(field)
-                field.currentEditor()?.selectedRange = NSRange(location: (field.stringValue as NSString).length, length: 0)
-            }
+            DispatchQueue.main.async { (field as? InkField)?.takeKeys() }
         }
+    }
+
+    static func dismantleNSView(_ field: NSTextField, coordinator: Coordinator) {
+        field.delegate = nil
     }
 
     private func apply(to field: NSTextField) {
@@ -121,26 +145,26 @@ struct PlainField: NSViewRepresentable {
 
         func controlTextDidChange(_ notification: Notification) {
             guard let field = notification.object as? NSTextField else { return }
-            parent.text = field.stringValue
+            if parent.text != field.stringValue { parent.text = field.stringValue }
         }
 
         func controlTextDidEndEditing(_ notification: Notification) { parent.onEnd?() }
 
-        /// The caret in ink, not the system's blue; and the list told it hasn't the keys now.
+        /// The caret in ink, not the system's blue.
         func controlTextDidBeginEditing(_ notification: Notification) {
             ((notification.object as? NSTextField)?.currentEditor() as? NSTextView)?.insertionPointColor = Theme.nsInk
-            NotificationCenter.default.post(name: .toylTyping, object: nil)
+            parent.onBegin?()
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
             switch selector {
-            case #selector(NSResponder.insertNewline(_:)):
+            case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertLineBreak(_:)),
+                 #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)):
                 guard let submit = parent.onSubmit else { return false }
                 submit()
                 return true
             case #selector(NSResponder.cancelOperation(_:)):
-                guard let escape = parent.onEscape else { return false }
-                escape()
+                if let escape = parent.onEscape { escape() } else { control.window?.makeFirstResponder(nil) }
                 return true
             case #selector(NSResponder.insertTab(_:)): return parent.onTab?() ?? false
             case #selector(NSResponder.insertBacktab(_:)): return parent.onBackTab?() ?? false
@@ -152,20 +176,86 @@ struct PlainField: NSViewRepresentable {
     }
 }
 
-/// A text field whose caret is ink, not the system's blue, from the moment it has the keys (and
-/// the list's told it hasn't them).
+/// A text field whose caret is ink, not the system's blue, that can take the keys as soon as it's
+/// on screen, and can be found by its name.
 final class InkField: NSTextField {
+    var name: String? {
+        didSet {
+            guard name != oldValue else { return }
+            if let oldValue, Self.fields[oldValue]?.field === self { Self.fields[oldValue] = nil }
+            if let name, window != nil { Self.fields[name] = Weak(field: self) }
+        }
+    }
+    /// Take the keys when it first shows.
+    var focusOnAppear = false
+    /// What ⌘Return does while it has the keys (a key equivalent, so it's caught here, before
+    /// the menus and before the text sees it).
+    var onCommandReturn: (() -> Void)?
+    /// Taking the keys selects everything in it (renaming), rather than going to its end.
+    var selectsAllOnFocus = false
+
+    private struct Weak { weak var field: InkField? }
+    private static var fields: [String: Weak] = [:]
+
+    /// The field with this name that's on screen, if there is one.
+    static func named(_ name: String) -> InkField? {
+        guard let field = fields[name]?.field, field.window != nil else { return nil }
+        return field
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let name {
+            if window != nil { Self.fields[name] = Weak(field: self) }
+            else if Self.fields[name]?.field === self { Self.fields[name] = nil }
+        }
+        guard window != nil, focusOnAppear else { return }
+        focusOnAppear = false
+        DispatchQueue.main.async { [weak self] in self?.takeKeys() }
+    }
+
+    /// Has the keys now (the caret at the end, or everything selected).
+    var hasKeys: Bool {
+        guard let editor = currentEditor() else { return false }
+        return window?.firstResponder === editor
+    }
+
+    /// Takes the keys: the caret at the end of what's there (or all of it selected).
+    func takeKeys() {
+        guard let window else { return }
+        if !hasKeys { window.makeFirstResponder(self) }
+        guard let editor = currentEditor() else { return }
+        let length = (stringValue as NSString).length
+        editor.selectedRange = selectsAllOnFocus ? NSRange(location: 0, length: length) : NSRange(location: length, length: 0)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if hasKeys, [36, 76].contains(event.keyCode), event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           let submit = onCommandReturn {
+            submit()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
     override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()
         (currentEditor() as? NSTextView)?.insertionPointColor = Theme.nsInk
-        if became { NotificationCenter.default.post(name: .toylTyping, object: nil) }
         return became
     }
 }
 
-extension Notification.Name {
-    /// A field's got the keys: the list lets go of them (so Return adds, rather than editing a task).
-    static let toylTyping = Notification.Name("toyl.typing")
+/// Who has the keys in toyl's window.
+@MainActor
+enum Keys {
+    /// toyl's main window (set when its keys are watched).
+    static weak var window: NSWindow?
+
+    /// The field that has the keys lets go of them, so the list has them.
+    static func letGo() {
+        guard let window = window ?? NSApp.keyWindow, window.firstResponder is NSText else { return }
+        window.makeFirstResponder(nil)
+    }
 }
 
 /// A task's box: a ring, gold and ticked once it's done (as Notes' checklists are). Late doesn't

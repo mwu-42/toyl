@@ -563,7 +563,7 @@ struct QuickEntryView: View {
     @ObservedObject var model: AppModel
     let close: () -> Void
     @Local private var text = ""
-    @Local private var focus = 1
+    @Local private var focus = 0
     @Local private var added: String?
 
     var body: some View {
@@ -584,8 +584,8 @@ struct QuickEntryView: View {
                 .foregroundStyle(Theme.faint)
                 Quiet(label: "", symbol: "xmark", size: 12, action: close).help("close (esc)")
             }
-            PlainField(text: $text, placeholder: "new task", font: Theme.nsFont(22), focus: focus,
-                       onSubmit: { add(keepOpen: NSEvent.modifierFlags.contains(.command)) }, onEscape: close)
+            PlainField(text: $text, placeholder: "new task", font: Theme.nsFont(22), autofocus: true, focus: focus,
+                       onSubmit: { add(keepOpen: false) }, onCommandSubmit: { add(keepOpen: true) }, onEscape: close, onTab: { true })
                 .frame(height: 28)
             HStack(spacing: 6) {
                 if let parsed {
@@ -594,7 +594,7 @@ struct QuickEntryView: View {
                         Chip(text: "→ " + model.display(guess.list.displayName))
                     }
                 } else {
-                    Text("?  idea    #  list or tag    by fri  aim    ~30m  length    /timer    !  pin").font(Theme.font(12.5)).foregroundStyle(Theme.faint)
+                    Text("?  idea    #  list or tag    by fri  due    ~30m  length    /timer    !  pin").font(Theme.font(12.5)).foregroundStyle(Theme.faint)
                 }
                 Spacer()
             }

@@ -8,6 +8,7 @@ enum Main {
         let arguments = CommandLine.arguments
         if arguments.count > 1, arguments[1] == "__snapshot" { exit(Picture.run(Array(arguments.dropFirst(2)))) }
         if arguments.count > 1, arguments[1] == "__phone" { exit(PhoneTry.run(Array(arguments.dropFirst(2)))) }
+        if arguments.count > 1, arguments[1] == "__keys" { exit(KeysTry.run(Array(arguments.dropFirst(2)))) }
         if CLI.handles(arguments) { exit(CLI.run(arguments)) }
         ToylApp.run()
     }

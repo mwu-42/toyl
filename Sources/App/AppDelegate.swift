@@ -89,14 +89,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         defaults.removeObject(forKey: "relaunch.at")
         if !relaunched || defaults.object(forKey: "relaunch.windowOpen") as? Bool ?? true { window.makeKeyAndOrderFront(nil) }
         model.watchSwipes()
+        model.watchKeys(in: window) { [weak self] in self?.openQuickEntry() }
         roomWatch = model.$showCalendar.dropFirst().filter { $0 }.map { _ in () }
             .merge(with: model.$calendarMode.dropFirst().map { _ in () })
             .sink { [weak self] _ in DispatchQueue.main.async { self?.makeRoom() } }
-        // The list has the keys at first (not the filter field, the first a window would pick).
-        DispatchQueue.main.async { [weak self] in
-            self?.window.makeFirstResponder(nil)
-            self?.model.focusList += 1
-        }
+        // Nothing has the keys at first (not the filter field, the first a window would pick):
+        // Return starts a task, the arrows move through the list.
+        DispatchQueue.main.async { [weak self] in self?.window.makeFirstResponder(nil) }
     }
 
     @objc func showMain() {
@@ -194,6 +193,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if panel.isVisible { panel.orderOut(nil) } else { panel.show() }
     }
 
+    /// Quick entry, open (from Return or ⌘N where the window has no quick add): never closed by it.
+    func openQuickEntry() {
+        if quickPanel == nil { quickPanel = QuickEntryPanel(model: model) }
+        quickPanel?.show()
+    }
+
     @objc func about() {
         let credits = NSAttributedString(string: "things off your list.\nworks with oyl.",
                                          attributes: [.font: Theme.nsFont(13), .foregroundColor: Theme.nsSecondary])
@@ -201,10 +206,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.activate()
     }
 
+    /// The caret in quick add; quick entry where there's no quick add (the page hidden, timers).
     @objc func newTask() {
         showMain()
         if model.place == .logbook { model.place = .inbox }
-        model.focusQuick += 1
+        model.editing = nil
+        if !model.showTasks || model.place == .timers || !model.focusQuickAdd() { openQuickEntry() }
     }
 
     @objc func newList() { showMain(); model.newList() }
@@ -341,7 +348,7 @@ enum Menus {
         ]))
         main.addItem(submenu("task", [
             item("check off", #selector(AppDelegate.checkOff), "k", target: app),
-            item("edit title", #selector(AppDelegate.editTitle), target: app),
+            item("edit title", #selector(AppDelegate.editTitle), "e", target: app),
             .separator(),
             item("today", #selector(AppDelegate.dueToday), "t", target: app),
             item("tomorrow", #selector(AppDelegate.dueTomorrow), "t", [.command, .option], target: app),

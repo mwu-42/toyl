@@ -462,25 +462,36 @@ struct CalendarMark: View {
     }
 }
 
-/// Renaming in place: Return keeps it, Escape doesn't, clicking away keeps it.
+/// Renaming in place: it starts with the name in it, all selected. Return keeps it, Escape
+/// doesn't, clicking away keeps it.
 struct RenameField: View {
     let name: String
     let save: (String) -> Void
     let done: () -> Void
-    @Local private var text = ""
+    @Local private var text: String
     @Local private var finished = false
 
-    var body: some View {
-        PlainField(text: $text, font: Theme.nsFont(15.5), focus: 1,
-                   onSubmit: { finish(keep: true) }, onEscape: { finish(keep: false) }, onEnd: { finish(keep: true) })
-            .onAppear { text = name }
-            .frame(height: 20)
+    init(name: String, save: @escaping (String) -> Void, done: @escaping () -> Void) {
+        self.name = name
+        self.save = save
+        self.done = done
+        _text = Local(initialValue: name)
     }
 
-    private func finish(keep: Bool) {
+    var body: some View {
+        PlainField(text: $text, font: Theme.nsFont(15.5), name: "rename", autofocus: true, selectAll: true,
+                   onSubmit: { finish(keep: true, leave: true) }, onEscape: { finish(keep: false, leave: true) },
+                   onTab: { true }, onEnd: { finish(keep: true, leave: false) })
+            .frame(height: 20)
+            .onDisappear { finish(keep: true, leave: false) }
+    }
+
+    private func finish(keep: Bool, leave: Bool) {
         guard !finished else { return }
         finished = true
-        if keep, text != name { save(text) }
+        let typed = text.trimmingCharacters(in: .whitespaces)
+        if keep, !typed.isEmpty, typed != name { save(typed) }
+        if leave { Keys.letGo() }
         done()
     }
 }
