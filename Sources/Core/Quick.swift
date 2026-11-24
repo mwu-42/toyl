@@ -17,6 +17,7 @@ import Foundation
 /// - `!` or `/pin`: pinned (kept at the top). `/idea` (or `/someday`): put off into ideas.
 /// - `/timer`, `/timer 25m`: a timer on it straight away (`/stopwatch` counts up).
 /// - ` // ` and anything after it: its notes.
+/// - `/list`, `/project`, `/group`, `/filter`, `/event` at the start make that instead (`Command`).
 struct Quick: Equatable {
     struct Token: Equatable, Hashable {
         enum Kind: String { case idea, list, newList, tag, due, aim, repeats, duration, pinned, someday, notes, timer }
@@ -282,5 +283,74 @@ struct Quick: Equatable {
     static func tidy(_ text: String) -> String {
         text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
             .trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: ",;:-–—·")))
+    }
+}
+
+// MARK: - making something else
+
+extension Quick {
+    /// A line that makes something other than a task: a word after a slash at its start.
+    /// - `/list groceries`: a list (`/list` alone: one to name)
+    /// - `/project final essay #cs`: a project, in the list named (`#cs`, `~cs`), else the one
+    ///   you're in, else the inbox (`/project` alone: one to name)
+    /// - `/group school`: a group of lists
+    /// - `/filter #cs due:week`: a saved filter (`/filter` alone: the filter field)
+    /// - `/event lunch with sam fri noon`: Google Calendar's form, filled in (it asks what's missing)
+    /// - `/timer 25m`, `/stopwatch`, with nothing else to name a task: just a timer (with a name,
+    ///   "/timer 25m essay" is still a task with a timer on it)
+    enum Command: Equatable {
+        case list(name: String)
+        case project(name: String, listId: String?, newList: String?)
+        case group(name: String)
+        case filter(query: String)
+        case event(title: String, due: String?, time: String?, minutes: Int?)
+        case timer(minutes: Int?, stopwatch: Bool)
+    }
+
+    /// The words, in the order they're offered while one's being typed, with what each makes.
+    static let commands: [(word: String, makes: String)] = [
+        ("list", "a list"), ("project", "a project"), ("group", "a group of lists"),
+        ("filter", "a saved filter"), ("event", "a calendar event"), ("timer", "a timer"),
+    ]
+    private static let commandAliases = ["proj": "project", "cal": "event", "calendar": "event"]
+
+    /// A command word being typed at the start, nothing after it yet ("/pro"): the words it could
+    /// finish as.
+    static func commandsStarting(_ input: String) -> [(word: String, makes: String)] {
+        let text = input.trimmingCharacters(in: .whitespaces)
+        guard text.hasPrefix("/"), !text.contains(where: \.isWhitespace) else { return [] }
+        let typed = text.dropFirst().lowercased()
+        return commands.filter { $0.word.hasPrefix(typed) && $0.word != typed }
+    }
+
+    static func command(_ input: String, lists: [ListModel], now: Date = Date(), weekStart: Int = 1) -> Command? {
+        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.hasPrefix("/") else { return nil }
+        let word = String(text.dropFirst().prefix { !$0.isWhitespace })
+        let rest = String(text.dropFirst(1 + word.count)).trimmingCharacters(in: .whitespaces)
+        switch commandAliases[word.lowercased()] ?? word.lowercased() {
+        case "list":
+            return .list(name: tidy(rest))
+        case "group":
+            return .group(name: tidy(rest))
+        case "filter":
+            return .filter(query: rest)
+        case "project":
+            var name = rest
+            var q = Quick()
+            takeLists(&name, into: &q, lists: lists)
+            // A #word that isn't a list was part of the name.
+            return .project(name: tidy(([name] + q.tags.map { "#" + $0 }).joined(separator: " ")), listId: q.listId, newList: q.newList)
+        case "event":
+            guard !rest.isEmpty else { return .event(title: "", due: nil, time: nil, minutes: nil) }
+            let q = parse(rest, lists: lists, now: now, weekStart: weekStart)
+            return .event(title: q.titleIsEmpty ? "" : q.title, due: q.due, time: q.time, minutes: q.duration)
+        case "timer", "stopwatch":
+            let q = parse(text, lists: lists, now: now, weekStart: weekStart)
+            guard q.titleIsEmpty, let timer = q.timer else { return nil }
+            return .timer(minutes: timer.minutes, stopwatch: timer.stopwatch)
+        default:
+            return nil
+        }
     }
 }

@@ -110,6 +110,10 @@ It's the v3 format Oyl's to-do store reads, grown:
   never does. Fields take the caret themselves (`PlainField` `autofocus`, `name`, `focus`) and let go with
   `Keys.letGo()` only when closed by a key, never on a click elsewhere. A title being typed is kept however it
   ends, except Escape. `toyl __keys` (with `TOYL_HOME`) presses keys in the window off screen and checks each.
+- **Slash words make other things** (`Quick.Command`, `AppModel.perform`): `/list`, `/project`, `/group`, `/filter`,
+  `/event`, and `/timer` with no task named, at the start of quick add (the + lines, quick entry, the phone, `toyl add`,
+  add_task too). What it'll make shows under the field first; Tab finishes a half-typed word. Named: made at once;
+  alone: made ready to name. The phone does lists, projects, groups and timers only.
 - **A row's sublist "add" line is hidden** until asked for (right-click › add to its sublist).
 - **Plain words** in what toyl says: no "puts it back"-style phrasing ("deleted", "restored").
 - **The last action** (`banner`) shows at the top right under the title and fades after a few seconds.

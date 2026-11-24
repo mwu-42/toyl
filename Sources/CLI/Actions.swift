@@ -446,6 +446,44 @@ extension Actions {
         return (list, id, ids.count)
     }
 
+    /// A slash word at the start of what's added (`/list groceries`, `/project essay #cs`,
+    /// `/group school`, `/filter #cs due:week`, `/timer 25m`): that's made, not a task. What was
+    /// made (said, and as JSON); nil when it isn't one.
+    static func command(_ text: String) throws -> (said: String, json: [String: Any])? {
+        let snap = try snapshot()
+        guard let command = Quick.command(text, lists: snap.lists, weekStart: snap.weekStart) else { return nil }
+        switch command {
+        case .list(let name):
+            guard !name.isEmpty else { throw Ops.Failure("a list needs a name: /list groceries") }
+            let list = try newList(name, group: nil, color: nil, sections: [])
+            return ("new list " + list.displayName, ["made": "list", "id": list.id, "name": list.name])
+        case .project(let name, let listId, let newListName):
+            guard !name.isEmpty else { throw Ops.Failure("a project needs a name: /project final essay #cs") }
+            var home = listId ?? ListModel.inbox
+            if listId == nil, let newListName { home = try newList(newListName, group: nil, color: nil, sections: []).id }
+            let made = try addProject(list: home, name: name)
+            return ("new project “\(name)” in " + made.list.displayName, ["made": "project", "id": made.id, "name": name, "list": made.list.id])
+        case .group(let name):
+            guard !name.isEmpty else { throw Ops.Failure("a group needs a name: /group school") }
+            let id = UID.make()
+            let saved = try save { doc in
+                if !doc.groups.contains(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) { doc.addGroup(name: name, id: id) }
+            }
+            let group = saved.groups.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+            return ("new group “\(name)”", ["made": "group", "id": group?.id ?? id, "name": name])
+        case .filter(let query):
+            guard !query.isEmpty else { throw Ops.Failure("a filter needs words: /filter #cs due:week") }
+            let id = UID.make()
+            try save { $0.addFilter(name: query, query: query, id: id) }
+            return ("saved filter “\(query)”", ["made": "filter", "id": id, "query": query])
+        case .event:
+            throw Ops.Failure("events go on google calendar with toyl cal add <title> --day fri --start 3pm (or the add_to_calendar tool)")
+        case .timer(let minutes, let stopwatch):
+            let timer = try startTimer(task: nil, label: stopwatch ? "stopwatch" : "timer", minutes: minutes.map(Double.init), stopwatch: stopwatch)
+            return (stopwatch ? "stopwatch going" : "timer going", ["made": "timer", "id": timer.id])
+        }
+    }
+
     /// A new project in a list. Its id.
     static func addProject(list ref: String, name: String) throws -> (list: ListModel, id: String) {
         let snap = try snapshot()

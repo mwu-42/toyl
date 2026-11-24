@@ -570,7 +570,7 @@ struct QuickEntryView: View {
         let parsed = text.isEmpty ? nil : Quick.parse(text, lists: model.snap.lists, weekStart: model.snap.weekStart)
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label(added.map { "added “\($0)”" } ?? "add to toyl", systemImage: added == nil ? "plus" : "checkmark")
+                Label(added ?? "add to toyl", systemImage: added == nil ? "plus" : "checkmark")
                     .font(Theme.font(13.5)).foregroundStyle(added == nil ? Theme.faint : Theme.accent)
                     .contentTransition(.opacity)
                     .animation(.easeOut(duration: 0.2), value: added)
@@ -585,10 +585,18 @@ struct QuickEntryView: View {
                 Quiet(label: "", symbol: "xmark", size: 12, action: close).help("close (esc)")
             }
             PlainField(text: $text, placeholder: "new task", font: Theme.nsFont(22), autofocus: true, focus: focus,
-                       onSubmit: { add(keepOpen: false) }, onCommandSubmit: { add(keepOpen: true) }, onEscape: close, onTab: { true })
+                       onSubmit: { add(keepOpen: false) }, onCommandSubmit: { add(keepOpen: true) }, onEscape: close,
+                       onTab: {
+                           if let word = Quick.commandsStarting(text).first { text = "/" + word.word + " " }
+                           return true
+                       })
                 .frame(height: 28)
             HStack(spacing: 6) {
-                if let parsed {
+                if let command = Quick.command(text, lists: model.snap.lists, weekStart: model.snap.weekStart) {
+                    Chip(text: "↩ " + model.describe(command), tint: Theme.accent, filled: true)
+                } else if let word = Quick.commandsStarting(text).first {
+                    Chip(text: "⇥ /" + word.word + "  " + word.makes)
+                } else if let parsed {
                     ForEach(parsed.tokens(lists: model.snap.lists), id: \.self) { Chip(text: $0.text, filled: true) }
                     if parsed.listId == nil, parsed.newList == nil, !parsed.idea, let guess = model.suggestion(for: parsed.title) {
                         Chip(text: "→ " + model.display(guess.list.displayName))
@@ -615,10 +623,25 @@ struct QuickEntryView: View {
     private func add(keepOpen: Bool) {
         let typed = text.trimmingCharacters(in: .whitespaces)
         guard !typed.isEmpty else { return close() }
+        // "/list groceries" and the rest: that, not a task. One that needs the window (a name to
+        // type, the calendar's form) brings it forward.
+        if let command = Quick.command(typed, lists: model.snap.lists, weekStart: model.snap.weekStart) {
+            text = ""
+            let wantsWindow = model.perform(command)
+            if wantsWindow {
+                close()
+                (NSApp.delegate as? AppDelegate)?.showMain()
+            } else if keepOpen {
+                added = model.describe(command)
+            } else {
+                close()
+            }
+            return
+        }
         var draft = Quick.parse(typed, lists: model.snap.lists, weekStart: model.snap.weekStart).draft(source: "quick entry")
         if draft.listId == nil, draft.newListName == nil, model.suggestWhileTyping, let guess = model.suggestion(for: draft.title) { draft.listId = guess.list.id }
         model.store.add(draft)
         text = ""
-        if keepOpen { added = draft.title } else { close() }
+        if keepOpen { added = "added “\(draft.title)”" } else { close() }
     }
 }

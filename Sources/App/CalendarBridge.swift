@@ -365,6 +365,30 @@ final class CalendarBridge: ObservableObject {
 
     /// A form for putting a task on the calendar: its title and day, its time and length if it
     /// has them, and where the rules say it goes (only if they're sure).
+    /// The form for an event typed into quick add (`/event lunch fri noon`): what was said, and
+    /// where the rules would put it if they're sure. What's missing is asked for there.
+    func form(title: String, due: String?, time: String?, minutes: Int?) -> EventForm {
+        var form = EventForm()
+        form.title = title
+        if let due { form.day = Format.day(due) == "today" || Format.day(due) == "tomorrow" ? Format.day(due) : due }
+        if let time {
+            form.start = Format.time(time)
+            if let minutes, let from = Day.moment(due ?? Day.today(), time) {
+                form.end = Format.time(Day.clock(from.addingTimeInterval(Double(minutes) * 60)))
+            }
+        } else if let minutes {
+            form.length = Format.minutes(minutes)
+        }
+        guard !title.isEmpty else { return form }
+        let placement = rules.place(title, list: nil, tags: [])
+        form.reason = placement.reason
+        if placement.sure, let key = placement.key, let sub = rules.sub(key), let calendar = rules.calendar(for: sub, in: google) {
+            form.calendarId = calendar.id
+            form.label = placement.label
+        }
+        return form
+    }
+
     func form(for task: TaskModel?) -> EventForm {
         var form = EventForm()
         guard let task else { return form }

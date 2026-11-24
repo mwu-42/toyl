@@ -351,6 +351,10 @@ final class PhoneLink: ObservableObject {
 
     /// What quick add reads in what's being typed, for the chips under the field.
     func parse(_ text: String) -> Parsed {
+        let snap = model.snap
+        if let command = Quick.command(String(text.prefix(300)), lists: snap.lists, weekStart: snap.weekStart) {
+            return Parsed(title: "", tokens: [model.describe(command)])
+        }
         let q = Quick.parse(String(text.prefix(300)), lists: model.snap.lists, weekStart: model.snap.weekStart)
         return Parsed(title: q.title, tokens: q.tokens(lists: model.snap.lists).map(\.text))
     }
@@ -371,6 +375,22 @@ final class PhoneLink: ObservableObject {
         case "add":
             guard let text = (f["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
                 return .json(["error": "nothing to add"], status: 400)
+            }
+            // "/list groceries", "/project essay", "/group school", "/timer 10m": that, not a task.
+            // Filters and calendar events are made on the Mac.
+            if var command = Quick.command(String(text.prefix(500)), lists: snap.lists, weekStart: snap.weekStart) {
+                switch command {
+                case .filter, .event:
+                    return .json(["error": "filters and events are made on the mac"], status: 400)
+                case .project(let name, nil, nil):
+                    let list = (f["list"] as? String).flatMap { snap.list($0) }?.id ?? ListModel.inbox
+                    command = .project(name: name, listId: list, newList: nil)
+                default:
+                    break
+                }
+                model.perform(command, quiet: true)
+                said = model.banner
+                break
             }
             let q = Quick.parse(String(text.prefix(500)), lists: snap.lists, weekStart: snap.weekStart)
             var draft = q.draft(source: "iphone")

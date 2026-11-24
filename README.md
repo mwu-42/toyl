@@ -54,7 +54,11 @@ open behind what you're doing (in front only if you were using toyl), never taki
   - `#cs` list or tag · `~list` a list · `?` an idea
   - `fri 5pm`, `tomorrow`, `nov 30`, `by fri`, `next week` when it's due
   - `every week` repeats · `~30m` its timer's length · `!` pin · ` // ` notes
-  - `/timer`, `/timer 30m`, `/stopwatch` start a timer on it
+  - `/timer`, `/timer 30m`, `/stopwatch` start a timer on it (alone, just a timer)
+  - **a slash word first makes something else**, shown under the field before you press Return (Tab finishes the word):
+    - `/list groceries` a list · `/project final essay #cs` a project (in the list named, else the one you're in) · `/group school` a group of lists
+    - `/filter #cs due:week` a saved filter · `/event lunch with sam fri noon` google calendar's form, filled in
+    - alone (`/list`, `/project`), it's made ready for you to name
 - ⏱ **timers on any task** (a running one shows on its task, and in timers; nothing at the window's foot): swipe it softly left, right-click › timer for a length, or pick one in its details: 10m · 30m · 1h · 6h · 24h, or type one. time adds up on the task.
 - 🔗 **links in notes are cards** in the details: the page's icon and title; click to open. rows stay plain.
 - ➕ **every list has its heading in all**, empty or not, with a + on the right to add straight into it.

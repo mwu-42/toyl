@@ -130,6 +130,8 @@ with `--json`, and honours `TOYL_HOME`:
 
 Using it keeps one parser. toyl's quick add understands much more than Oyl's `TodQuick`: `#list` or `#tag`,
 `~list`, "by fri" and "next week" (as deadlines), repeats, `~30m` lengths, `!` pins, ` // ` notes, `/timer 30m`.
+A slash word first (`/list`, `/project`, `/group`, `/filter`, `/timer` alone) makes that instead of a task, and
+`toyl add --json` then prints `{"made": ..., "id": ...}` rather than a task.
 
 **Detecting toyl:** use it when `toyl.json` exists in toyl's folder (and the setting is on). Show its pieces
 only while that's true. If the file goes away, fall back to the built-ins.

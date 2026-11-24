@@ -4,14 +4,15 @@ import SwiftUI
 /// `toyl __keys`: the window built off screen (never shown, nothing brought forward) and keys
 /// pressed in it, the way the window's own key watcher takes them, checking what each one does:
 /// Return to a new task, typing, adding, editing titles, the arrows, Escape, the sublist and the
-/// + line, renaming. Only with a `TOYL_HOME` list. Prints each check; fails if any does.
+/// + line, renaming, slash words. Only with a `TOYL_HOME` list. Prints each check; fails if any does.
+/// `toyl __keys picture.png` also draws the window as "/list groceries" is being typed.
 enum KeysTry {
     static func run(_ arguments: [String]) -> Int32 {
         guard !Paths.isReal else {
             FileHandle.standardError.write(Data("toyl: __keys needs TOYL_HOME\n".utf8))
             return 2
         }
-        return MainActor.assumeIsolated { Run().go() }
+        return MainActor.assumeIsolated { Run(arguments: arguments).go() }
     }
 
     @MainActor
@@ -20,8 +21,10 @@ enum KeysTry {
         let window: NSWindow
         var quickEntries = 0
         var failed = 0
+        let arguments: [String]
 
-        init() {
+        init(arguments: [String]) {
+            self.arguments = arguments
             let app = NSApplication.shared
             app.setActivationPolicy(.prohibited)
             NSApp.appearance = NSAppearance(named: .aqua)
@@ -269,6 +272,54 @@ enum KeysTry {
             for ch in "water plants" { pressIn(String(ch), ch == " " ? 49 : 0) }
             pressIn("\r", 36)
             check("…Return adds and closes", task("water plants") != nil && closed == 1, "\(closed)")
+
+            // Slash words: something else made instead of a task.
+            model.place = .anytime
+            spin(0.3)
+            enter()
+            type("/pro")
+            check("/pro: the words it could be show", Quick.commandsStarting(text("quick")).first?.word == "project")
+            tab()
+            check("…Tab finishes it", text("quick") == "/project ", "'\(text("quick"))'")
+            escape()
+            type("/list groceries")
+            if let picture = arguments.first {
+                spin(0.3)
+                if let view = window.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: picture))
+                }
+            }
+            enter()
+            let groceries = model.snap.lists.first { $0.name == "groceries" }
+            check("/list groceries makes the list, not a task", groceries != nil && task("/list groceries") == nil && task("groceries") == nil)
+            check("…and goes there, still typing", model.place == .list(groceries?.id ?? "-") && field("quick")?.hasKeys == true, "\(model.place)")
+            type("eggs")
+            enter()
+            check("…so the next goes into it", task("eggs")?.listId == groceries?.id)
+            type("/project weekly shop")
+            enter()
+            check("/project makes one in the list you're in", groceries.flatMap { model.snap.list($0.id) }?.projects.map(\.name) == ["weekly shop"])
+            type("/timer 15m")
+            enter()
+            check("/timer 15m alone: just a timer", model.timers.timers.contains { $0.taskId == nil && $0.label == "timer" } && task("/timer 15m") == nil)
+            type("/group home")
+            enter()
+            check("/group makes a group of lists", model.snap.groups.contains { $0.name == "home" })
+            type("/filter eggs")
+            enter()
+            check("/filter saves a filter and shows it", model.snap.filters.contains { $0.query == "eggs" } && { if case .filter = model.place { return true } else { return false } }())
+            model.place = .anytime
+            spin(0.3)
+            enter()
+            type("/list")
+            enter()
+            spin(0.5)
+            check("/list alone: a new list, its name ready to type", model.renaming?.hasPrefix("list:") == true && field("rename")?.hasKeys == true, "\(String(describing: model.renaming))")
+            type("books")
+            enter()
+            spin(0.3)
+            check("…named", model.snap.lists.contains { $0.name == "books" })
 
             return finish()
         }

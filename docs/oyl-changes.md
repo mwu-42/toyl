@@ -34,3 +34,17 @@ When it's taken in, write `2` into `~/Oyl/.toyl-sync`.
 - If Oyl shows toyl's tasks grouped, it may group a list's tasks by project, but it doesn't have to.
 
 When it's taken in, write `3` into `~/Oyl/.toyl-sync`.
+
+## 4 · 2026-11-23 · slash words that make something other than a task
+
+- What's typed to add can now start with a slash word that makes something else: `/list groceries`,
+  `/project final essay #cs` (in the list named, else the inbox), `/group school`, `/filter #cs due:week`, and
+  `/timer 25m` or `/stopwatch` with nothing else on the line (just a timer, no task). `/timer 25m essay` is still a
+  task with a timer on it.
+- `toyl add "<text>"` does this too. For such a line, `toyl add --json` prints `{"made": "list" | "project" |
+  "group" | "filter" | "timer", "id": ..., ...}` instead of a task. A slash word with nothing after it (`/list`)
+  fails with a message, and `/event` fails pointing at `toyl cal add`.
+- If Oyl passes what's typed in the notch to `toyl add` and reads the task back, check for `made` first. If Oyl
+  parses quick add itself, it may offer the same words, or leave them be (then such a line becomes a task title).
+
+When it's taken in, write `4` into `~/Oyl/.toyl-sync`.

@@ -182,7 +182,7 @@ enum Tools {
                  readOnly: true, idempotent: true),
             tool("get_task", "get a task", "One task, everything about it.", object(["id": string("task id, or its title")], required: ["id"]),
                  readOnly: true, idempotent: true),
-            tool("add_task", "add a task", "Adds a task (at the top of its list). Give text (quick add) or title.", object(add)),
+            tool("add_task", "add a task", "Adds a task (at the top of its list). Give text (quick add) or title. Text starting /list, /project, /group, /filter or /timer makes that instead.", object(add)),
             tool("add_tasks", "add several tasks", "Adds several tasks at once, e.g. from a brain dump. Each is as add_task takes it.",
                  object(["tasks": ["type": "array", "items": object(add), "description": "the tasks"]], required: ["tasks"])),
             tool("update_task", "change a task", "Changes what's given about a task; anything left out stays as it is.",
@@ -279,6 +279,7 @@ enum Tools {
             if let list = snap.list(task.listId), list.sections.count > 1 { out["list_sections"] = list.sections.map(\.name) }
             return out
         case "add_task":
+            if let text = a["text"] as? String, let made = try Actions.command(text) { return made.json.merging(["note": made.said]) { a, _ in a } }
             let snap = try Actions.snapshot()
             let task = try Actions.add(addRequest(a))
             return ["task": Ops.json(task, in: try Actions.snapshot(), now: now), "note": snap.list(task.listId) == nil ? "made a new list" : "added"]

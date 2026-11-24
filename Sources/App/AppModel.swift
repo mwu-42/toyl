@@ -308,6 +308,92 @@ final class AppModel: ObservableObject {
         return id
     }
 
+    // MARK: - making something else (a slash word at the start of quick add)
+
+    /// Where a new project goes when no list's named: the + line's list, else the list you're in,
+    /// else the inbox.
+    func projectHome(under group: TaskGroup?) -> String {
+        if let list = group?.listId { return list }
+        if case .list(let id) = place { return id }
+        return ListModel.inbox
+    }
+
+    /// What a command will make, said under the field as it's typed.
+    func describe(_ command: Quick.Command, under group: TaskGroup? = nil) -> String {
+        switch command {
+        case .list(let name):
+            return name.isEmpty ? "new list" : "new list “\(display(name))”"
+        case .project(let name, let listId, let newList):
+            let home = listId.flatMap { snap.list($0)?.displayName } ?? newList.map { "new list “\($0)”" }
+                ?? snap.list(projectHome(under: group))?.displayName ?? "inbox"
+            return (name.isEmpty ? "new project" : "new project “\(display(name))”") + " in " + display(home)
+        case .group(let name):
+            return name.isEmpty ? "new group of lists" : "new group “\(display(name))”"
+        case .filter(let query):
+            return query.isEmpty ? "the filter" : "saved filter “\(query)”"
+        case .event(let title, let due, let time, let minutes):
+            var parts = ["google calendar"]
+            if !title.isEmpty { parts.append(display(title)) }
+            if let due { parts.append(Format.day(due) + (time.map { " " + Format.time($0) } ?? "")) } else if let time { parts.append(Format.time(time)) }
+            if let minutes { parts.append(Format.minutes(minutes)) }
+            return parts.joined(separator: " · ")
+        case .timer(let minutes, let stopwatch):
+            return stopwatch ? "a stopwatch" : minutes.map { Format.minutes($0) + " timer" } ?? "a timer"
+        }
+    }
+
+    /// Makes what a command says. `quiet` (from the phone): nothing on the Mac moves or waits for
+    /// a name. Whether the window's wanted for it (a name to type, the calendar's form, the filter).
+    @discardableResult
+    func perform(_ command: Quick.Command, under group: TaskGroup? = nil, quiet: Bool = false) -> Bool {
+        let back = place
+        defer { if quiet { place = back; renaming = nil } }
+        switch command {
+        case .list(let name):
+            newList(name.isEmpty ? "new list" : name, rename: name.isEmpty && !quiet)
+            if !name.isEmpty || quiet { banner = "new list “\(display(name.isEmpty ? "new list" : name))”" }
+            return name.isEmpty && !quiet
+        case .project(let name, let listId, let newListName):
+            var list = listId ?? projectHome(under: group)
+            if listId == nil, let newListName {
+                let id = UID.make()
+                store.change("new list") { $0.addList(name: newListName, id: id) }
+                list = id
+            }
+            newProject(in: list, name: name.isEmpty ? "new project" : name, rename: name.isEmpty && !quiet)
+            if !name.isEmpty || quiet { banner = "new project “\(display(name.isEmpty ? "new project" : name))”" }
+            return name.isEmpty && !quiet
+        case .group(let name):
+            newGroup(name.isEmpty ? "new group" : name, rename: name.isEmpty && !quiet)
+            if !name.isEmpty || quiet { banner = "new group “\(display(name.isEmpty ? "new group" : name))”" }
+            return name.isEmpty && !quiet
+        case .filter(let query):
+            guard !quiet else { return false }
+            if query.isEmpty {
+                focusFilter += 1
+                return true
+            }
+            let id = UID.make()
+            store.change("save filter") { $0.addFilter(name: query, query: query, id: id) }
+            place = .filter(id)
+            banner = "saved filter “\(query)”"
+            return false
+        case .event(let title, let due, let time, let minutes):
+            guard !quiet else { return false }
+            guard calendar.connected else {
+                calendar.note = "connect google calendar first (settings › google calendar)"
+                calendar.openSettings()
+                return true
+            }
+            calendarForm = calendar.form(title: title, due: due, time: time, minutes: minutes)
+            return true
+        case .timer(let minutes, let stopwatch):
+            timers.start(task: nil, minutes: minutes.map(Double.init), stopwatch: stopwatch, label: stopwatch ? "stopwatch" : "timer")
+            banner = stopwatch ? "stopwatch going" : (minutes.map { Format.minutes($0) + " timer going" } ?? "timer going")
+            return false
+        }
+    }
+
     // MARK: - autosort
 
     func classifier() -> Classifier {
@@ -570,11 +656,11 @@ final class AppModel: ObservableObject {
     // MARK: - lists, groups, filters
 
     @discardableResult
-    func newList(_ name: String = "new list", group: String? = nil) -> String {
+    func newList(_ name: String = "new list", group: String? = nil, rename: Bool = true) -> String {
         let id = UID.make()
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { store.change("new list") { $0.addList(name: name, group: group, id: id) } }
         place = .list(id)
-        renaming = "list:" + id
+        if rename { renaming = "list:" + id }
         return id
     }
 
@@ -590,12 +676,12 @@ final class AppModel: ObservableObject {
 
     /// A new project in a list, its name ready to type.
     @discardableResult
-    func newProject(in list: String, name: String = "new project") -> String {
+    func newProject(in list: String, name: String = "new project", rename: Bool = true) -> String {
         let id = UID.make()
         withAnimation(.snappy(duration: 0.25)) { store.change("new project") { $0.addProject(to: list, name: name, id: id) } }
         if place != .list(list), list != ListModel.inbox || place != .inbox { place = list == ListModel.inbox ? .inbox : .list(list) }
         setGroup(.project, for: place)
-        renaming = "project:" + id
+        if rename { renaming = "project:" + id }
         return id
     }
 
@@ -652,10 +738,10 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func newGroup(_ name: String = "new group") -> String {
+    func newGroup(_ name: String = "new group", rename: Bool = true) -> String {
         let id = UID.make()
         store.change("new group") { $0.addGroup(name: name, id: id) }
-        renaming = "group:" + id
+        if rename { renaming = "group:" + id }
         return id
     }
 

@@ -180,11 +180,13 @@ struct QuickAdd: View {
     @Local private var text = ""
 
     var body: some View {
-        let parsed = text.isEmpty ? nil : Quick.parse(text, lists: model.snap.lists, weekStart: model.snap.weekStart)
+        let command = Quick.command(text, lists: model.snap.lists, weekStart: model.snap.weekStart)
+        let words = Quick.commandsStarting(text)
+        let parsed = text.isEmpty || command != nil || !words.isEmpty ? nil : Quick.parse(text, lists: model.snap.lists, weekStart: model.snap.weekStart)
         let tokens = parsed?.tokens(lists: model.snap.lists) ?? []
         let guess = parsed.flatMap(suggestion(for:))
         let finishing = parsed == nil ? nil : completion()
-        let chips = !tokens.isEmpty || guess != nil || finishing != nil
+        let chips = command != nil || !words.isEmpty || !tokens.isEmpty || guess != nil || finishing != nil
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 10) {
                 Image(systemName: "plus").font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.faint)
@@ -200,6 +202,11 @@ struct QuickAdd: View {
             .background(RoundedRectangle(cornerRadius: 9).fill(Theme.field))
             if chips {
                 HStack(spacing: 6) {
+                    // A slash word: what Return makes instead of a task, or the words it could be.
+                    if let command { Chip(text: "↩ " + model.describe(command), tint: Theme.accent, filled: true) }
+                    ForEach(Array(words.enumerated()), id: \.offset) { index, word in
+                        Chip(text: (index == 0 ? "⇥ " : "") + "/" + word.word + "  " + word.makes, tint: Theme.secondary)
+                    }
                     ForEach(tokens, id: \.self) { token in Chip(text: token.text, tint: tint(token.kind), filled: true) }
                     if let guess { Chip(text: "→ \(model.display(guess.displayName))?  ⇥", tint: Theme.secondary) }
                     if let finishing { Chip(text: "⇥ " + finishing.shown, tint: Theme.secondary) }
@@ -233,6 +240,17 @@ struct QuickAdd: View {
 
     private func submit() {
         guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return model.leaveTyping() }
+        // "/list groceries", "/project essay #cs"…: that, not a task.
+        if let command = Quick.command(text, lists: model.snap.lists, weekStart: model.snap.weekStart) {
+            text = ""
+            model.perform(command)
+            return
+        }
+        // "/pro" half typed: finish it first.
+        if let word = Quick.commandsStarting(text).first {
+            text = "/" + word.word + " "
+            return
+        }
         let typed = text
         text = ""
         if model.quickAdd(typed) == nil { text = typed }
@@ -267,6 +285,10 @@ struct QuickAdd: View {
     }
 
     private func complete() -> Bool {
+        if let word = Quick.commandsStarting(text).first {
+            text = "/" + word.word + " "
+            return true
+        }
         if let finishing = completion() {
             text.replaceSubrange(finishing.replace, with: finishing.with)
             return true
@@ -422,6 +444,12 @@ struct AddUnder: View {
         let typed = text
         guard !typed.trimmingCharacters(in: .whitespaces).isEmpty else { return close(leave: true) }
         text = ""
+        // "/project essay" under a list's heading: a project in that list.
+        if let command = Quick.command(typed, lists: model.snap.lists, weekStart: model.snap.weekStart) {
+            model.perform(command, under: group)
+            close(leave: true)
+            return
+        }
         if model.quickAdd(typed, section: group) == nil { text = typed }
     }
 

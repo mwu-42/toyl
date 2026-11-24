@@ -102,7 +102,9 @@ enum AgentDocs {
         - `by fri`, `next week`, `early dec`, `in a month or so`, `fri-ish`: due then.
         - `every day/weekday/week/other week/month/year`, `every fri`, `daily`, `weekly`.
         - `~30m`, `for 2h`, `1h30m`: duration. `!` or `/pin`: pinned. `/idea`: put off into ideas. ` // ` then notes.
-        - `/timer`, `/timer 25m`, `/stopwatch`: start a timer on it as it's added.
+        - `/timer`, `/timer 25m`, `/stopwatch`: start a timer on it as it's added (alone, with nothing to name a task: just a timer).
+        - A slash word at the start makes something else instead of a task: `/list groceries`, `/project final essay #cs`
+          (in the list named, else the inbox), `/group school`, `/filter #cs due:week`. Works in `toyl add` and add_task.
 
         ## Filters (`toyl ls <filter>`, `list_tasks` with `query`, saved filters)
 

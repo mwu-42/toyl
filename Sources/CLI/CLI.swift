@@ -196,6 +196,10 @@ enum CLI {
         if args.has("someday") { request.someday = true }
         request.subtasks = args.values("sub")
         request.idea = idea
+        if !idea, let made = try Actions.command(request.text ?? "") {
+            out(made.json, args, text: made.said)
+            return
+        }
         let task = try Actions.add(request)
         let snap = try Actions.snapshot()
         out(Ops.json(task, in: snap), args, text: "added " + Ops.line(task, in: snap))
