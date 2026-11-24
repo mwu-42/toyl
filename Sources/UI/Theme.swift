@@ -87,6 +87,9 @@ struct PlainField: NSViewRepresentable {
     var onEnd: (() -> Void)?
     /// What's shaded in the words as they're typed: what quick add has read ("tmr", "#cs", "5pm").
     var marks: [NSRange] = []
+    /// Where a click was (in the window, from its top left): the caret goes there when it first
+    /// takes the keys, rather than to the end.
+    var caretAt: CGPoint?
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -107,6 +110,7 @@ struct PlainField: NSViewRepresentable {
         field.name = name
         field.selectsAllOnFocus = selectAll
         field.focusOnAppear = autofocus
+        field.caretAt = caretAt
         field.onCommandReturn = onCommandSubmit ?? onSubmit
         context.coordinator.focus = focus
         return field
@@ -229,6 +233,9 @@ final class InkField: NSTextField {
     var onCommandReturn: (() -> Void)?
     /// Taking the keys selects everything in it (renaming), rather than going to its end.
     var selectsAllOnFocus = false
+    /// Where a click was (in the window, from its top left): the caret goes there the first time
+    /// it takes the keys.
+    var caretAt: CGPoint?
 
     private struct Weak { weak var field: InkField? }
     private static var fields: [String: Weak] = [:]
@@ -262,6 +269,14 @@ final class InkField: NSTextField {
         if !hasKeys { window.makeFirstResponder(self) }
         guard let editor = currentEditor() else { return }
         let length = (stringValue as NSString).length
+        if let point = caretAt, let text = editor as? NSTextView {
+            caretAt = nil
+            // SwiftUI counts from the window's top left (its title bar too); AppKit from its bottom left.
+            let inWindow = NSPoint(x: point.x, y: window.frame.height - point.y)
+            let at = text.characterIndexForInsertion(at: text.convert(inWindow, from: nil))
+            editor.selectedRange = NSRange(location: min(max(at, 0), length), length: 0)
+            return
+        }
         editor.selectedRange = selectsAllOnFocus ? NSRange(location: 0, length: length) : NSRange(location: length, length: 0)
     }
 

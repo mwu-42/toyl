@@ -532,10 +532,21 @@ final class QuickEntryPanel: NSPanel {
         backgroundColor = Theme.nsPaper
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] { standardWindowButton(button)?.isHidden = true }
-        contentView = NSHostingView(rootView: QuickEntryView(model: model) { [weak self] in self?.orderOut(nil) })
+        baseHeight = frame.height
+        contentView = NSHostingView(rootView: QuickEntryView(model: model, close: { [weak self] in self?.orderOut(nil) },
+                                                             fit: { [weak self] extra in self?.fit(extra) }))
     }
 
     override var canBecomeKey: Bool { true }
+
+    private var baseHeight: CGFloat = 0
+
+    /// Taller by `extra` (or back to its height), its top staying where it is.
+    func fit(_ extra: CGFloat) {
+        let height = baseHeight + extra
+        guard abs(frame.height - height) > 0.5 else { return }
+        setFrame(NSRect(x: frame.minX, y: frame.maxY - height, width: frame.width, height: height), display: true)
+    }
 
     override func cancelOperation(_ sender: Any?) { orderOut(nil) }
 
@@ -562,12 +573,16 @@ extension Notification.Name {
 struct QuickEntryView: View {
     @ObservedObject var model: AppModel
     let close: () -> Void
+    /// How much taller than usual it needs to be (its slash menu showing), for the panel.
+    var fit: (CGFloat) -> Void = { _ in }
     @Local private var text = ""
     @Local private var focus = 0
     @Local private var added: String?
+    @Local private var slash = SlashPick()
 
     var body: some View {
-        let parsed = text.isEmpty ? nil : Quick.parse(text, lists: model.snap.lists, weekStart: model.snap.weekStart)
+        let menu = slash.menu(text)
+        let parsed = text.isEmpty || menu != nil ? nil : Quick.parse(text, lists: model.snap.lists, weekStart: model.snap.weekStart)
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Label(added ?? "add to toyl", systemImage: added == nil ? "plus" : "checkmark")
@@ -585,18 +600,26 @@ struct QuickEntryView: View {
                 Quiet(label: "", symbol: "xmark", size: 12, action: close).help("close (esc)")
             }
             PlainField(text: $text, placeholder: "new task", font: Theme.nsFont(22), autofocus: true, focus: focus,
-                       onSubmit: { add(keepOpen: false) }, onCommandSubmit: { add(keepOpen: true) }, onEscape: close,
-                       onTab: {
-                           if let word = Quick.commandsStarting(text).first { text = "/" + word.word + " " }
-                           return true
-                       },
+                       onSubmit: { if !slash.take(in: &text) { add(keepOpen: false) } },
+                       onCommandSubmit: { if !slash.take(in: &text) { add(keepOpen: true) } },
+                       onEscape: { if !slash.close(text) { close() } },
+                       onTab: { _ = slash.take(in: &text); return true },
+                       onUp: { slash.move(-1, in: text) },
+                       onDown: { slash.move(1, in: text) },
                        marks: parsed.map { Quick.marks(in: text, read: $0) } ?? [])
                 .frame(height: 28)
+            // "/": the words it could be, in a menu under the field (the panel grows to hold it).
+            if let menu {
+                SlashMenu(words: menu.words, picked: slash.picked(in: menu.words.count), pick: { slash.index = $0 }) { choice in
+                    _ = slash.take(choice, in: &text)
+                    focus += 1
+                }
+            }
             HStack(spacing: 6) {
                 if let command = Quick.command(text, lists: model.snap.lists, weekStart: model.snap.weekStart) {
                     Chip(text: "↩ " + model.describe(command), tint: Theme.accent, filled: true)
-                } else if let word = Quick.commandsStarting(text).first {
-                    Chip(text: "⇥ /" + word.word + "  " + word.makes)
+                } else if menu != nil {
+                    Text("↑ ↓ to pick · return or tab to take it · esc to put it away").font(Theme.font(12.5)).foregroundStyle(Theme.faint)
                 } else if let parsed {
                     ForEach(parsed.tokens(lists: model.snap.lists), id: \.self) { Chip(text: $0.text, filled: true) }
                     if parsed.listId == nil, parsed.newList == nil, !parsed.idea, let guess = model.suggestion(for: parsed.title) {
@@ -619,6 +642,8 @@ struct QuickEntryView: View {
             added = nil
             focus += 1
         }
+        .onChange(of: menu?.words.count ?? 0) { _, count in fit(count == 0 ? 0 : SlashMenu.height(count) + 10) }
+        .onChange(of: text) { _, now in slash.typed(now) }
     }
 
     private func add(keepOpen: Bool) {

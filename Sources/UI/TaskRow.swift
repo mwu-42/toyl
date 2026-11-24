@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// A task: its circle, its title (double-click, or ⌘E, to change it), and under it in gray what's
-/// known about it. Drag it anywhere; drop tasks on it to put them before it.
+/// A task: its circle, its title (a click puts the caret in it, where the click was; or ⌘E), and
+/// under it in gray what's known about it. Drag it anywhere; drop tasks on it to put them before it.
 struct TaskRow: View {
     @ObservedObject var model: AppModel
     let task: TaskModel
@@ -9,8 +9,6 @@ struct TaskRow: View {
     let now: Date
     @Local private var hovering = false
     @Local private var targeted = false
-
-    nonisolated(unsafe) private static var lastClick: (id: String, at: Date)?
 
     private var selected: Bool { model.selection.contains(task.id) }
     private var editing: Bool { model.editing == task.id }
@@ -53,7 +51,7 @@ struct TaskRow: View {
             if inside { model.hoveredTask = task.id } else if model.hoveredTask == task.id { model.hoveredTask = nil }
         }
         .onDisappear { if model.hoveredTask == task.id { model.hoveredTask = nil } }
-        .onTapGesture { click() }
+        .onTapGesture(coordinateSpace: .global) { click(at: $0) }
         .contextMenu { TaskMenu(model: model, ids: menuTargets) }
         .toylDrag(model, { "toyl:" + dragTargets.joined(separator: ",") }) {
             TaskDragPreview(title: model.display(task.title), count: dragTargets.count)
@@ -92,18 +90,20 @@ struct TaskRow: View {
     private var menuTargets: [String] { selected ? Array(model.selection) : [task.id] }
     private var dragTargets: [String] { selected ? model.visible.map(\.id).filter { model.selection.contains($0) } : [task.id] }
 
-    private func click() {
+    /// A click puts the caret in its title, where the click was (⌘ or ⇧: it's selected, to
+    /// take more, and nothing's typed).
+    private func click(at point: CGPoint) {
         let flags = NSEvent.modifierFlags
-        let at = Date()
-        if !flags.contains(.command), !flags.contains(.shift), model.selection == [task.id],
-           let last = Self.lastClick, last.id == task.id, at.timeIntervalSince(last.at) < NSEvent.doubleClickInterval {
-            model.editing = task.id
-        } else {
+        if flags.contains(.command) || flags.contains(.shift) {
             model.select(task.id, command: flags.contains(.command), shift: flags.contains(.shift))
             // The list has the keys now (a field that had them lets go, keeping what was typed).
             model.leaveTyping()
+            return
         }
-        Self.lastClick = (task.id, at)
+        guard !editing else { return }
+        model.select(task.id)
+        model.editingAt = point
+        model.editing = task.id
     }
 
     /// What's known about it, in a line: when, its aim, how it repeats, how long it takes, the
@@ -453,11 +453,14 @@ struct TitleEditor: View {
     let task: TaskModel
     @Local private var draft: String
     @Local private var finished = false
+    /// Where the click that opened it was, for the caret.
+    @Local private var caret: CGPoint?
 
     init(model: AppModel, task: TaskModel) {
         self.model = model
         self.task = task
         _draft = Local(initialValue: task.title)
+        _caret = Local(initialValue: model.editingAt)
     }
 
     var body: some View {
@@ -467,7 +470,9 @@ struct TitleEditor: View {
                    onTab: { true },
                    onUp: { finish(keep: true, leave: true); model.moveSelection(-1); return true },
                    onDown: { finish(keep: true, leave: true); model.moveSelection(1); return true },
-                   onEnd: { finish(keep: true, leave: false) })
+                   onEnd: { finish(keep: true, leave: false) },
+                   caretAt: caret)
+            .onAppear { model.editingAt = nil }
             .onDisappear { finish(keep: true, leave: false) }
     }
 

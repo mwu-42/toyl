@@ -490,6 +490,41 @@ extension Quick {
     ]
     private static let commandAliases = ["proj": "project", "cal": "event", "calendar": "event"]
 
+    /// A slash word for the menu under the field: the word, and what it does.
+    struct SlashWord: Equatable, Hashable {
+        let word: String
+        let says: String
+    }
+
+    /// At the start of a line: what the line can make, then what can go on a task.
+    static let lineWords: [SlashWord] = commands.filter { $0.word != "timer" }.map { SlashWord(word: $0.word, says: $0.makes) } + [
+        SlashWord(word: "timer", says: "a timer (on the task, if one's named)"),
+        SlashWord(word: "stopwatch", says: "a stopwatch (likewise)"),
+        SlashWord(word: "pin", says: "a task kept at the top"),
+        SlashWord(word: "idea", says: "a task put off into ideas"),
+    ]
+    /// After a task's words: what can go on it.
+    static let taskWords: [SlashWord] = [
+        SlashWord(word: "timer", says: "a timer on it (/timer 25m)"),
+        SlashWord(word: "stopwatch", says: "a stopwatch on it"),
+        SlashWord(word: "pin", says: "kept at the top"),
+        SlashWord(word: "idea", says: "put off into ideas"),
+    ]
+
+    /// The slash word being typed at the end ("/", "/pro", "essay /ti"): where it is, and the
+    /// words it could be, for the menu under the field. Nil once it's a whole word, or for a slash
+    /// inside a word ("a/b", a link).
+    static func slashMenu(_ input: String) -> (range: Range<String.Index>, words: [SlashWord])? {
+        guard let slash = input.lastIndex(of: "/") else { return nil }
+        let typed = input[input.index(after: slash)...]
+        guard typed.allSatisfy(\.isLetter) else { return nil }
+        let before = input[..<slash]
+        if let last = before.last, !last.isWhitespace { return nil }
+        let key = typed.lowercased()
+        let words = (before.allSatisfy(\.isWhitespace) ? lineWords : taskWords).filter { $0.word.hasPrefix(key) && $0.word != key }
+        return words.isEmpty ? nil : (slash..<input.endIndex, words)
+    }
+
     /// A command word being typed at the start, nothing after it yet ("/pro"): the words it could
     /// finish as.
     static func commandsStarting(_ input: String) -> [(word: String, makes: String)] {

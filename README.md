@@ -37,7 +37,8 @@ open behind what you're doing (in front only if you were using toyl), never taki
   - tasks: a page sorted another way is sorted by hand from your first drag, keeping what you saw · dropped among a project's tasks, a task joins it
   - in the sidebar: lists (drop one on a group to put it in, on "lists" to take it out), groups, saved filters, and the places themselves (⌘1–6 follow)
   - in the page: projects by their headings, lists by theirs in all · sublist items, within a task or onto another
-- ✏️ **double-click any name to change it**: a task's title, a list (in the sidebar, its heading, or the big title), a project, a group, a filter,
+- ✏️ **click a task to change its title**: the caret goes right where you click (⌘-click or ⇧-click to select instead)
+- ✏️ **double-click any other name to change it**: a list (in the sidebar, its heading, or the big title), a project, a group, a filter,
   a tag (on every task that has it), a sublist item, a timer. Return keeps it, Escape doesn't. the words are changed right where they are: nothing moves or changes size.
 - 👆 **swipe a task** (two fingers on the trackpad, as in Mail; or a finger on the phone). it pulls freely, then harder and harder, like a rubber band
   - soft right: into its list's **in progress** (or out of it) · hard right: in progress, with a timer going
@@ -53,7 +54,8 @@ open behind what you're doing (in front only if you were using toyl), never taki
 - ↩️ **the keys**: press Return anywhere to start a new task, or just start typing
   - Return adds it and stays for the next · Return with nothing typed, Escape or ↓ go back to the list
   - ↑ ↓ move through the list (⇧ to take more) · ↑ from the top goes into quick add
-  - double-click a title or press ⌘E to change it: Return keeps it, Escape doesn't, clicking away keeps it
+  - click a task (or press ⌘E) to change its title: Return keeps it, Escape doesn't, clicking away keeps it
+  - to look at a task without typing in it: ↑ ↓ to it, or ⌘-click it; then space shows its description
   - space shows or hides the description · ⌫ deletes · Escape lets go of what's selected
   - the + lines (under a heading, in a sublist) take the caret at once, stay for the next, and close on Return with nothing typed
 - ⌨️ **quick add** reads what you type: `essay draft fri 5pm #cs ~2h !`
@@ -64,7 +66,9 @@ open behind what you're doing (in front only if you were using toyl), never taki
   - what's been read is shaded in the field as you type (the date, the list, the tags), and shown under it
   - `every week` repeats · `~30m` its timer's length · `!` pin · ` // ` notes
   - `/timer`, `/timer 30m`, `/stopwatch` start a timer on it (alone, just a timer)
-  - **a slash word first makes something else**, shown under the field before you press Return (Tab finishes the word):
+  - **type `/` for a menu of slash words**: ↑ ↓ to pick, Return, Tab or a click to take one, Escape to put it away
+    - at the start of the line, what it can make (below); after a task's words, what can go on it: `/timer`, `/stopwatch`, `/pin`, `/idea`
+  - **a slash word first makes something else**, shown under the field before you press Return:
     - `/list groceries` a list · `/project final essay #cs` a project (in the list named, else the one you're in) · `/group school` a group of lists
     - `/filter #cs due:week` a saved filter · `/event lunch with sam fri noon` google calendar's form, filled in
     - alone (`/list`, `/project`), it's made ready for you to name

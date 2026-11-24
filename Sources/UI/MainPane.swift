@@ -12,7 +12,8 @@ struct MainPane: View {
             if model.place == .timers {
                 TimersPage(model: model)
             } else {
-                QuickAdd(model: model)
+                // Over what's under it: its slash menu hangs down over the list.
+                QuickAdd(model: model).zIndex(1)
                 if let trouble = model.store.trouble { Notice(text: trouble, tint: Theme.late) }
                 if let note = model.calendar.note { Notice(text: note, tint: Theme.secondary) { model.calendar.note = nil } }
                 if let said = model.mail.said { Notice(text: said, tint: Theme.secondary) { model.mail.said = nil } }
@@ -213,36 +214,59 @@ struct ViewMenu: View {
 struct QuickAdd: View {
     @ObservedObject var model: AppModel
     @Local private var text = ""
+    @Local private var slash = SlashPick()
 
     var body: some View {
         let command = Quick.command(text, lists: model.snap.lists, weekStart: model.snap.weekStart)
-        let words = Quick.commandsStarting(text)
-        let parsed = text.isEmpty || command != nil || !words.isEmpty ? nil : Quick.parse(text, lists: model.snap.lists, weekStart: model.snap.weekStart)
+        let menu = slash.menu(text)
+        let parsed = text.isEmpty || command != nil || menu != nil ? nil : Quick.parse(text, lists: model.snap.lists, weekStart: model.snap.weekStart)
         let tokens = parsed?.tokens(lists: model.snap.lists) ?? []
         let guess = parsed.flatMap(suggestion(for:))
         let finishing = parsed == nil ? nil : completion()
-        let chips = command != nil || !words.isEmpty || !tokens.isEmpty || guess != nil || finishing != nil
+        let chips = command != nil || !tokens.isEmpty || guess != nil || finishing != nil
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 10) {
                 Image(systemName: "plus").font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.faint)
                 PlainField(text: $text, placeholder: placeholder, name: "quick", focus: model.focusQuick,
                            onSubmit: submit,
-                           onEscape: { if text.isEmpty { model.leaveTyping() } else { text = "" } },
+                           onEscape: {
+                               if slash.close(text) { return }
+                               if text.isEmpty { model.leaveTyping() } else { text = "" }
+                           },
                            onTab: { _ = complete(); return true },
-                           onDown: { model.leaveTyping(); model.enterList(); return true },
+                           onUp: { slash.move(-1, in: text) },
+                           onDown: {
+                               if slash.move(1, in: text) { return true }
+                               model.leaveTyping()
+                               model.enterList()
+                               return true
+                           },
                            marks: parsed.map { Quick.marks(in: text, read: $0) } ?? [])
                     .frame(height: 21)
             }
             .padding(.horizontal, 13)
             .padding(.vertical, 9)
             .background(RoundedRectangle(cornerRadius: 9).fill(Theme.field))
+            // "/": the words it could be, in a menu over what's under it.
+            .overlay(alignment: .topLeading) {
+                if let menu {
+                    Floating(size: SlashMenu.size(menu.words.count)) {
+                        SlashMenu(words: menu.words, picked: slash.picked(in: menu.words.count), pick: { slash.index = $0 }) { choice in
+                            _ = slash.take(choice, in: &text)
+                            model.focusQuick += 1
+                        }
+                    }
+                    // Just under the field's box (21 tall, 9 above and below).
+                    .offset(x: 26, y: 21 + 18 + 6)
+                    .transition(.opacity)
+                }
+            }
+            .animation(.snappy(duration: 0.14), value: menu == nil)
+            .onChange(of: text) { _, now in slash.typed(now) }
             if chips {
                 HStack(spacing: 6) {
-                    // A slash word: what Return makes instead of a task, or the words it could be.
+                    // A slash word: what Return makes instead of a task.
                     if let command { Chip(text: "↩ " + model.describe(command), tint: Theme.accent, filled: true) }
-                    ForEach(Array(words.enumerated()), id: \.offset) { index, word in
-                        Chip(text: (index == 0 ? "⇥ " : "") + "/" + word.word + "  " + word.makes, tint: Theme.secondary)
-                    }
                     ForEach(tokens, id: \.self) { token in Chip(text: token.text, tint: tint(token.kind), filled: true) }
                     if let guess { Chip(text: "→ \(model.display(guess.displayName))?  ⇥", tint: Theme.secondary) }
                     if let finishing { Chip(text: "⇥ " + finishing.shown, tint: Theme.secondary) }
@@ -276,15 +300,12 @@ struct QuickAdd: View {
 
     private func submit() {
         guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return model.leaveTyping() }
+        // The menu's open ("/pro" half typed): the picked word first.
+        if slash.take(in: &text) { return }
         // "/list groceries", "/project essay #cs"…: that, not a task.
         if let command = Quick.command(text, lists: model.snap.lists, weekStart: model.snap.weekStart) {
             text = ""
             model.perform(command)
-            return
-        }
-        // "/pro" half typed: finish it first.
-        if let word = Quick.commandsStarting(text).first {
-            text = "/" + word.word + " "
             return
         }
         let typed = text
@@ -321,10 +342,7 @@ struct QuickAdd: View {
     }
 
     private func complete() -> Bool {
-        if let word = Quick.commandsStarting(text).first {
-            text = "/" + word.word + " "
-            return true
-        }
+        if slash.take(in: &text) { return true }
         if let finishing = completion() {
             text.replaceSubrange(finishing.replace, with: finishing.with)
             return true
@@ -362,6 +380,8 @@ struct TaskListView: View {
                         if model.addingTo == group.id {
                             AddUnder(model: model, group: group)
                                 .transition(.opacity.combined(with: .move(edge: .top)))
+                                // Its slash menu hangs over the rows under it.
+                                .zIndex(1)
                         }
                         if model.place == .upcoming, let day = group.day, model.calendar.showEvents {
                             EventsStrip(events: model.calendar.events(on: day), now: now, compact: true)
@@ -557,18 +577,38 @@ struct AddUnder: View {
     @ObservedObject var model: AppModel
     let group: TaskGroup
     @Local private var text = ""
+    @Local private var slash = SlashPick()
+    @Local private var focus = 0
 
     var body: some View {
+        let menu = slash.menu(text)
         HStack(spacing: 11) {
             Image(systemName: "plus").font(.system(size: 11)).foregroundStyle(Theme.faint).frame(width: 17)
-            PlainField(text: $text, placeholder: "new task", name: "under", autofocus: true, onSubmit: add,
-                       onEscape: { close(leave: true) }, onTab: { true },
+            PlainField(text: $text, placeholder: "new task", name: "under", autofocus: true, focus: focus, onSubmit: add,
+                       onEscape: { if !slash.close(text) { close(leave: true) } },
+                       onTab: { _ = slash.take(in: &text); return true },
+                       onUp: { slash.move(-1, in: text) },
+                       onDown: { slash.move(1, in: text) },
                        onEnd: { if text.trimmingCharacters(in: .whitespaces).isEmpty { close(leave: false) } },
                        marks: marks)
                 .frame(height: 20)
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 10)
+        // "/": the words it could be, in a menu over the rows under it.
+        .overlay(alignment: .topLeading) {
+            if let menu {
+                Floating(size: SlashMenu.size(menu.words.count)) {
+                    SlashMenu(words: menu.words, picked: slash.picked(in: menu.words.count), pick: { slash.index = $0 }) { choice in
+                        _ = slash.take(choice, in: &text)
+                        focus += 1
+                    }
+                }
+                // Just under the line (20 tall, 7 above and below).
+                .offset(x: 34, y: 20 + 14 + 2)
+            }
+        }
+        .onChange(of: text) { _, now in slash.typed(now) }
     }
 
     /// What quick add has read in what's typed, shaded.
@@ -578,6 +618,7 @@ struct AddUnder: View {
     }
 
     private func add() {
+        if slash.take(in: &text) { return }
         let typed = text
         guard !typed.trimmingCharacters(in: .whitespaces).isEmpty else { return close(leave: true) }
         text = ""

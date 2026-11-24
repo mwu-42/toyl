@@ -40,7 +40,7 @@ enum KeysTry {
             let size = NSSize(width: 1180, height: 760)
             let view = NSHostingView(rootView: RootView(model: model).frame(width: size.width, height: size.height))
             view.frame = NSRect(origin: .zero, size: size)
-            window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -30000, y: -30000), size: size),
+            window = OffscreenWindow(contentRect: NSRect(origin: NSPoint(x: -30000, y: -30000), size: size),
                               styleMask: [.titled, .resizable], backing: .buffered, defer: false)
             window.contentView = view
             Keys.window = window
@@ -276,6 +276,12 @@ enum KeysTry {
             for ch in "water plants" { pressIn(String(ch), ch == " " ? 49 : 0) }
             pressIn("\r", 36)
             check("…Return adds and closes", task("water plants") != nil && closed == 1, "\(closed)")
+            pressIn("/", 44)
+            pressIn(String(UnicodeScalar(0xF701)!), 125)
+            pressIn("\r", 36)
+            check("quick entry: / opens the menu, ↓ Return takes a word", (entry.firstResponder as? NSTextView)?.string == "/project " && closed == 1,
+                  "'\((entry.firstResponder as? NSTextView)?.string ?? "")' \(closed)")
+            pressIn("\u{1b}", 53)
 
             // Slash words: something else made instead of a task.
             model.place = .anytime
@@ -327,8 +333,87 @@ enum KeysTry {
 
             reordering()
             shorthand()
+            slashMenu()
             steady()
             return finish()
+        }
+
+        /// "/" opens a menu of slash words under the field: ↑ ↓ pick, Return or Tab or a click takes
+        /// one, Escape puts it away.
+        func slashMenu() {
+            model.place = .inbox
+            model.addingTo = nil
+            spin(0.3)
+            let every = Quick.slashMenu("/")?.words.map(\.word) ?? []
+            check("/ at the start: every word", every == ["list", "project", "group", "filter", "event", "timer", "stopwatch", "pin", "idea"], "\(every)")
+            check("…after a task's words, what goes on a task", Quick.slashMenu("essay /")?.words.map(\.word) == ["timer", "stopwatch", "pin", "idea"])
+            check("…none for a slash in a word or a link", Quick.slashMenu("read a/b") == nil && Quick.slashMenu("see https://x.com/a") == nil
+                  && Quick.slashMenu("/list") == nil && Quick.slashMenu("/list ") == nil)
+            enter()
+            type("/")
+            picture("slash-menu")
+            down()
+            down()
+            check("↓ in the menu doesn't leave quick add", field("quick")?.hasKeys == true)
+            enter()
+            check("↓ ↓ Return takes the third word", text("quick") == "/group ", "'\(text("quick"))'")
+            escape()
+            type("/")
+            up()
+            tab()
+            check("↑ goes round to the last, Tab takes it", text("quick") == "/idea ", "'\(text("quick"))'")
+            escape()
+            type("/")
+            escape()
+            check("Escape puts the menu away and keeps the /", text("quick") == "/" && field("quick")?.hasKeys == true, "'\(text("quick"))'")
+            down()
+            check("…so ↓ goes to the list again", !typing)
+            enter()
+            escape()
+            type("essay /p")
+            enter()
+            check("after words: Return takes /pin", text("quick") == "essay /pin ", "'\(text("quick"))'")
+            enter()
+            check("…and Return again adds it, pinned", task("essay")?.pinned == true, "\(String(describing: task("essay")))")
+
+            // A click on a word in the menu, over the list under it.
+            orderIn()
+            type("/")
+            spin(0.4)
+            if let quick = field("quick") {
+                let box = quick.convert(quick.bounds, to: nil)
+                // The second word: under the field's box (9 below the field), the menu's gap (6), its
+                // inset (5), half a row, and a row.
+                let point = NSPoint(x: box.minX + 60, y: box.minY - 9 - 6 - SlashMenu.inset - SlashMenu.rowHeight * 1.5)
+                // As the window server does: to the window that's topmost at that spot (the menu's own).
+                let onScreen = window.convertPoint(toScreen: point)
+                let target = (window.childWindows ?? []).first { $0.frame.contains(onScreen) } ?? window
+                for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                    if let event = NSEvent.mouseEvent(with: type, location: target.convertPoint(fromScreen: onScreen), modifierFlags: [],
+                                                      timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: target.windowNumber,
+                                                      context: nil, eventNumber: 0, clickCount: 1, pressure: 1) {
+                        target.sendEvent(event)
+                    }
+                }
+                spin(0.5)
+                check("a click on a word in the menu takes it (over the list)", target !== window && text("quick") == "/project " && field("quick")?.hasKeys == true,
+                      "'\(text("quick"))' \(typing) menu window: \(target !== window) children \((window.childWindows ?? []).map { "\($0.frame) \($0.isVisible)" })")
+                check("…and the menu goes", window.childWindows?.contains { $0.isVisible } != true)
+            }
+            escape()
+            escape()
+            window.orderOut(nil)
+
+            // The + line under a heading has it too.
+            if let group = model.groups.first(where: { $0.listId != nil }) {
+                withAnimation { model.addingTo = group.id }
+                spin(0.5)
+                type("/pro")
+                tab()
+                check("the + line: Tab takes the word", text("under") == "/project ", "'\(text("under"))'")
+                escape()
+                spin(0.3)
+            }
         }
 
         /// TickTick's shorthand for days, and what's shaded as it's typed.
@@ -381,6 +466,16 @@ enum KeysTry {
         }
 
         // MARK: changing words in place
+
+        /// Clicks only reach a window that's in: this one goes in see-through, takes no real clicks,
+        /// and goes back off screen (ordering it in pulls it onto the screen).
+        func orderIn() {
+            window.alphaValue = 0
+            window.ignoresMouseEvents = true
+            window.orderFrontRegardless()
+            window.setFrameOrigin(NSPoint(x: -30000, y: -30000))
+            spin(0.3)
+        }
 
         /// With `TOYL_PICTURES` set to a folder, the window drawn there as `name`.png.
         func picture(_ name: String) {
@@ -492,6 +587,47 @@ enum KeysTry {
                        }, stop: { escape() })
             }
             headingClick()
+            taskClick()
+        }
+
+        /// A click on a task puts the caret in its title, where the click was.
+        func taskClick() {
+            model.place = .inbox
+            model.selection = []
+            model.editing = nil
+            spin(0.4)
+            guard let first = model.visible.first else { return check("a click on a task edits its title", false, "no task") }
+            // Where its title is: open it once to see.
+            model.editing = first.id
+            spin(0.4)
+            guard let title = field("title") else { return check("a click on a task edits its title", false, "no title field") }
+            let start = title.convert(NSPoint(x: title.bounds.minX + 3, y: title.bounds.midY), to: nil)
+            let past = title.convert(NSPoint(x: title.bounds.minX + 500, y: title.bounds.midY), to: nil)
+            escape()
+            spin(0.3)
+            orderIn()
+            func click(at point: NSPoint) {
+                for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                    if let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                      windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) {
+                        window.sendEvent(event)
+                    }
+                }
+                spin(0.5)
+            }
+            click(at: start)
+            let caret = field("title")?.currentEditor()?.selectedRange
+            check("a click on a task: the caret's in its title", model.editing == first.id && field("title")?.hasKeys == true, "\(String(describing: model.editing)) \(typing)")
+            check("…where the click was (its start)", caret?.location == 0 && caret?.length == 0, "\(String(describing: caret))")
+            escape()
+            spin(0.3)
+            check("…Escape lets go", model.editing == nil && !typing)
+            click(at: past)
+            let end = field("title")?.currentEditor()?.selectedRange
+            check("…a click past its words: the caret at the end", end?.location == (first.title as NSString).length, "\(String(describing: end)) \(first.title)")
+            escape()
+            spin(0.3)
+            window.orderOut(nil)
         }
 
         var headingPoint: NSPoint?
@@ -513,9 +649,7 @@ enum KeysTry {
                 }
             }
             // Clicks only reach a window that's in: this one is, far off screen and see-through.
-            window.alphaValue = 0
-            window.orderFrontRegardless()
-            spin(0.3)
+            orderIn()
             click(1, at: line)
             spin(0.6)
             let group = model.groups.first { $0.projectId == project.id }
@@ -670,4 +804,10 @@ enum KeysTry {
             return failed == 0 ? 0 : 1
         }
     }
+}
+
+/// A window kept wherever it's put, off screen too (macOS pulls a titled window back onto the
+/// screen when it's ordered in).
+final class OffscreenWindow: NSWindow {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
 }

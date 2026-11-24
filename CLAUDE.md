@@ -109,14 +109,18 @@ It's the v3 format Oyl's to-do store reads, grown:
   delete. Rows have no timer button: the soft left swipe is it.
 - **The keys are the window's** (`AppModel.watchKeys`, a key watcher, not SwiftUI focus): whenever nothing's being
   typed, Return starts a new task (the caret in quick add; quick entry with the page hidden), a typed letter starts
-  one, ↑ ↓ move, space shows the description, ⌫ deletes, Escape lets go. ⌘E (or a double-click) edits a title; Return
-  never does. Fields take the caret themselves (`PlainField` `autofocus`, `name`, `focus`) and let go with
+  one, ↑ ↓ move, space shows the description, ⌫ deletes, Escape lets go. A click on a task (or ⌘E) edits its title,
+  the caret where the click was (`AppModel.editingAt`, `PlainField(caretAt:)`); ⌘/⇧-click only selects. Return
+  never edits. Fields take the caret themselves (`PlainField` `autofocus`, `name`, `focus`) and let go with
   `Keys.letGo()` only when closed by a key, never on a click elsewhere. A title being typed is kept however it
   ends, except Escape. `toyl __keys` (with `TOYL_HOME`) presses keys in the window off screen and checks each.
 - **Slash words make other things** (`Quick.Command`, `AppModel.perform`): `/list`, `/project`, `/group`, `/filter`,
   `/event`, and `/timer` with no task named, at the start of quick add (the + lines, quick entry, the phone, `toyl add`,
-  add_task too). What it'll make shows under the field first; Tab finishes a half-typed word. Named: made at once;
-  alone: made ready to name. The phone does lists, projects, groups and timers only.
+  add_task too). What it'll make shows under the field first. Typing `/` opens a menu of the words (`SlashMenu`,
+  `SlashPick`, `Quick.slashMenu`): line words at the start, task words (/timer, /stopwatch, /pin, /idea) after
+  other words; ↑ ↓ pick, Return/Tab/click take, Escape puts it away until the text changes. Over the list it floats
+  in a child window (`Floating`), since the list's AppKit scroll view takes clicks ahead of anything SwiftUI draws
+  on it; that window never takes the keys. Named: made at once; alone: made ready to name. The phone does lists, projects, groups and timers only.
 - **Nothing redraws the whole window on a timer.** Countdowns tick in their own `TimelineView`s; what goes by the
   day (today, late, the now line) reads `AppModel.clock` (each minute, at midnight, on wake), never the timers' tick.
   AppModel doesn't forward the timer engine's changes (only `ringing`). A swipe lives in `Swiping`, watched by rows.

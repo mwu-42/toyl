@@ -46,6 +46,9 @@ final class AppModel: ObservableObject {
     @Published var anchor: String?
     /// The task whose title is being edited in its row.
     @Published var editing: String?
+    /// Where the click that started editing a title was (in the window, from its top left, as
+    /// SwiftUI counts), for the caret to go there. Taken once.
+    var editingAt: CGPoint?
     @Published var filter = ""
     @Published var showInspector: Bool { didSet { defaults.set(showInspector, forKey: "inspector") } }
     @Published var showSidebar: Bool { didSet { defaults.set(showSidebar, forKey: "sidebar") } }
